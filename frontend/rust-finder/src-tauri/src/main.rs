@@ -1,23 +1,21 @@
-use fuzzy_matcher::skim::SkimMatcherV2;
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::path::{Path, PathBuf};
-use std::time::Instant;
 use serde_json;
 use tauri::api::path::config_dir;
 
 const MINIMUM_SCORE: i16 = 20;
-const SKIP_DIRECTORY: &str = "Library";           // Directory to skip
+const SKIP_DIRECTORY: &str = "Library"; // Directory to skip
 
-/// Scores the filename using prefix matching
+/// Scores the filename based on whether it starts with the query string
 fn score_filename(filename: &str, query: &str) -> i16 {
     if filename.starts_with(query) {
-        return 1000; // Prioritize exact prefix match
+        return 1000; // Return a high score for filenames that start with the query
     }
-    0 // Return 0 for non-prefix matches
+    0 // Return 0 for filenames that do not start with the query
 }
 
 /// Recursively indexes directories and subdirectories
@@ -94,7 +92,6 @@ fn search_files(query: String) -> Vec<(String, String)> {
 
         let score = score_filename(cleaned_filename, &query);
         if score >= MINIMUM_SCORE {
-            // No highlighting applied
             results.push((filename.clone(), file_path.clone()));
         }
     }

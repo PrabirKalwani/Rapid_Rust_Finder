@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
-import './App.css'; // Import your CSS file for styling
+import debounce from 'lodash.debounce';
+import './App.css'; 
 
 function App() {
   const [query, setQuery] = useState('');
@@ -8,18 +9,34 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const handleSearch = async () => {
+  
+  const fetchResults = async (query) => {
     setLoading(true);
     setError(null);
     try {
       const searchResults = await invoke('search_files', { query });
       setResults(searchResults);
-      console.log('Search results:', searchResults); // Debugging log
     } catch (error) {
       console.error('Error searching files:', error);
       setError('Failed to search files.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  
+  const debouncedFetchResults = useCallback(
+    debounce((query) => fetchResults(query), 300), 
+    []
+  );
+
+  const handleChange = (e) => {
+    const newQuery = e.target.value;
+    setQuery(newQuery);
+    if (newQuery.trim() === '') {
+      setResults([]);
+    } else {
+      debouncedFetchResults(newQuery);
     }
   };
 
@@ -39,20 +56,20 @@ function App() {
           <input
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={handleChange}
             placeholder="Search files..."
             className="search-input"
           />
-          <button onClick={handleSearch} className="search-button">
-            {loading ? 'Searching...' : 'Search'}
-          </button>
         </div>
       </header>
       <main>
         <div className="results-container">
+          {query.trim() === '' && !loading && !error && (
+            <p className="placeholder-message">Type something here...</p>
+          )}
           {loading && <p className="loading">Loading...</p>}
           {error && <p className="error">{error}</p>}
-          {results.length === 0 && !loading && !error && (
+          {results.length === 0 && !loading && !error && query.trim() !== '' && (
             <p className="no-results">No results found</p>
           )}
           {results.length > 0 && (
@@ -76,7 +93,7 @@ function App() {
   );
 }
 
-// Helper function to get file icon based on filename
+
 const getFileIcon = (filename) => {
   const extension = filename.split('.').pop().toLowerCase();
   switch (extension) {
@@ -92,7 +109,7 @@ const getFileIcon = (filename) => {
     case 'png':
       return 'image.png';
     default:
-      return 'default.png'; // Default icon
+      return 'default.png'; 
   }
 };
 
