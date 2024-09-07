@@ -6,6 +6,7 @@ use std::io::{BufReader, BufWriter};
 use std::path::{Path, PathBuf};
 use serde_json;
 use tauri::api::path::config_dir;
+use std::time::Instant;
 
 const MINIMUM_SCORE: i16 = 20;
 const SKIP_DIRECTORY: &str = "Library"; // Directory to skip
@@ -68,6 +69,8 @@ struct FileIndex {
 /// Searches for files based on the query
 #[tauri::command]
 fn search_files(query: String) -> Vec<(String, String)> {
+    let start_time = Instant::now(); // Start the timer
+
     let index_path = config_dir().unwrap().join("file_index.json");
     let index = if index_path.exists() {
         // Load the existing index
@@ -95,6 +98,10 @@ fn search_files(query: String) -> Vec<(String, String)> {
             results.push((filename.clone(), file_path.clone()));
         }
     }
+
+    let duration = start_time.elapsed(); // Measure the elapsed time
+    println!("Search completed in {:?}", duration);
+
     results
 }
 
