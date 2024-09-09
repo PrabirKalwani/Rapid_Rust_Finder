@@ -1,7 +1,67 @@
-# Tauri + React
+# OS :- Rust based file system 
 
-This template should help get you started developing with Tauri and React in Vite.
+This Readme provides step step instuctions on how run the application .
 
-## Recommended IDE Setup
+## Prerequisites
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+Ensure you have the following software installed based on your operating system:
+
+### macOS
+1. [Homebrew](https://brew.sh/) (for managing packages)
+2. Install dependencies:
+   ```bash
+   brew install rustup
+   rustup-init
+   brew install node
+   ```
+
+### Linux (Ubuntu/Debian)
+1. Install dependencies:
+   ```bash
+   sudo apt update
+   sudo apt install libwebkit2gtk-4.0-dev build-essential curl nodejs npm
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+   ```
+
+### Windows
+1. Install [Node.js](https://nodejs.org/) (includes npm).
+2. Install [Rust](https://www.rust-lang.org/tools/install).
+3. Install required Windows packages:
+   ```bash
+   npm install -g windows-build-tools
+   ```
+
+---
+
+## Setup
+
+1. **Clone the repository:**
+   ```bash
+   git clone <repository-url>
+   cd <repository-folder>
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+3. **Install Tauri CLI:**
+   ```bash
+   cargo install tauri-cli
+   ```
+
+---
+
+## Development
+
+To run the app in development mode:
+
+```bash
+npm run tauri dev
+```
+
+This will start the Vite dev server, bundle the app, and open the Tauri window with live reloading.
+
+---
+
