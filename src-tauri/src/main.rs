@@ -10,6 +10,7 @@ use std::time::Instant;
 
 const MINIMUM_SCORE: i16 = 20;
 const SKIP_DIRECTORY: &str = "Library"; // Directory to skip
+const ROOT_FOLDER: &str = "E:\\";
 
 /// Scores the filename based on whether it starts with the query string
 fn score_filename(filename: &str, query: &str) -> i16 {
@@ -79,7 +80,7 @@ fn search_files(query: String) -> Vec<(String, String)> {
     } else {
         // Create a new index
         println!("Creating new index...");
-        let start_path = Path::new("/Users/prabirkalwani");
+        let start_path = Path::new(ROOT_FOLDER);
         let mut new_index = FileIndex { files: HashMap::new() };
         index_recursive(start_path, &mut new_index);
         save_index(&new_index, &index_path);
@@ -101,7 +102,6 @@ fn search_files(query: String) -> Vec<(String, String)> {
 
     let duration = start_time.elapsed(); // Measure the elapsed time
     println!("Search completed in {:?}", duration);
-
     results
 }
 

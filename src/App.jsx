@@ -17,6 +17,7 @@ function App() {
     setError(null);
     try {
       const searchResults = await invoke("search_files", { query });
+      console.log(typeof(searchResults))
       setResults(searchResults);
     } catch (error) {
       console.error("Error searching files:", error);
@@ -52,30 +53,11 @@ function App() {
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       <div className="App">
-        <Navbar></Navbar>
-        <ViewPage></ViewPage>
+        <Navbar query={query} handleChange={handleChange}></Navbar>
+        <ViewPage results={results} loading={loading} error={error} query={query} openFile={openFile}></ViewPage>
       </div>
     </ThemeProvider>
   );
 }
-
-const getFileIcon = (filename) => {
-  const extension = filename.split(".").pop().toLowerCase();
-  switch (extension) {
-    case "pdf":
-      return "pdf.png";
-    case "docx":
-      return "docx.png";
-    case "xlsx":
-      return "xlsx.png";
-    case "jpg":
-    case "jpeg":
-      return "image.png";
-    case "png":
-      return "image.png";
-    default:
-      return "default.png";
-  }
-};
 
 export default App;
