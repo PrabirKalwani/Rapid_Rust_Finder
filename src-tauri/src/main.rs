@@ -9,20 +9,21 @@ use tauri::api::path::config_dir;
 use std::time::Instant;
 
 const MINIMUM_SCORE: i16 = 20;
-const SKIP_DIRECTORY: &str = "Library"; // Directory to skip
+const SKIP_DIRECTORY: &str = "Library"; 
+const ROOT_FOLDER: &str = "E:\\";
 
-/// Scores the filename based on whether it starts with the query string
+
 fn score_filename(filename: &str, query: &str) -> i16 {
     if filename.starts_with(query) {
-        return 1000; // Return a high score for filenames that start with the query
+        return 1000; 
     }
-    0 // Return 0 for filenames that do not start with the query
+    0 
 }
 
-/// Recursively indexes directories and subdirectories
+
 fn index_recursive(path: &Path, index: &mut FileIndex) {
     if path.ends_with(SKIP_DIRECTORY) {
-        return; // Skip the directory if it matches the skip pattern
+        return; 
     }
 
     match fs::read_dir(path) {
@@ -33,11 +34,11 @@ fn index_recursive(path: &Path, index: &mut FileIndex) {
                     let filename = entry.file_name().into_string().unwrap();
                     let file_path = entry_path.display().to_string();
                     
-                    // Store the filename and path in the index
+                    
                     index.files.insert(filename.clone(), file_path.clone());
 
                     if entry_path.is_dir() {
-                        index_recursive(&entry_path, index); // Recurse into subdirectories
+                        index_recursive(&entry_path, index); 
                     }
                 }
             }
@@ -46,40 +47,40 @@ fn index_recursive(path: &Path, index: &mut FileIndex) {
     }
 }
 
-/// Saves the index to a file
+
 fn save_index(index: &FileIndex, index_path: &Path) {
     let file = File::create(index_path).unwrap();
     let writer = BufWriter::new(file);
     serde_json::to_writer(writer, index).unwrap();
 }
 
-/// Loads the index from a file
+
 fn load_index(index_path: &Path) -> FileIndex {
     let file = File::open(index_path).unwrap();
     let reader = BufReader::new(file);
     serde_json::from_reader(reader).unwrap()
 }
 
-/// Data structure to hold the index
+
 #[derive(Serialize, Deserialize, Debug)]
 struct FileIndex {
-    files: HashMap<String, String>, // Maps filename to file path
+    files: HashMap<String, String>, 
 }
 
-/// Searches for files based on the query
+
 #[tauri::command]
 fn search_files(query: String) -> Vec<(String, String)> {
-    let start_time = Instant::now(); // Start the timer
+    let start_time = Instant::now(); 
 
     let index_path = config_dir().unwrap().join("file_index.json");
     let index = if index_path.exists() {
-        // Load the existing index
+        
         println!("Loading existing index...");
         load_index(&index_path)
     } else {
-        // Create a new index
+        
         println!("Creating new index...");
-        let start_path = Path::new("/Users/prabirkalwani");
+        let start_path = Path::new(ROOT_FOLDER);
         let mut new_index = FileIndex { files: HashMap::new() };
         index_recursive(start_path, &mut new_index);
         save_index(&new_index, &index_path);
@@ -99,9 +100,8 @@ fn search_files(query: String) -> Vec<(String, String)> {
         }
     }
 
-    let duration = start_time.elapsed(); // Measure the elapsed time
+    let duration = start_time.elapsed(); 
     println!("Search completed in {:?}", duration);
-
     results
 }
 

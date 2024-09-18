@@ -1,4 +1,4 @@
-# OS :- Rust based file system 
+# OS :- Rust based file system
 
 This Readme provides step step instuctions on how run the application .
 
@@ -7,6 +7,7 @@ This Readme provides step step instuctions on how run the application .
 Ensure you have the following software installed based on your operating system:
 
 ### macOS
+
 1. [Homebrew](https://brew.sh/) (for managing packages)
 2. Install dependencies:
    ```bash
@@ -16,6 +17,7 @@ Ensure you have the following software installed based on your operating system:
    ```
 
 ### Linux (Ubuntu/Debian)
+
 1. Install dependencies:
    ```bash
    sudo apt update
@@ -24,6 +26,7 @@ Ensure you have the following software installed based on your operating system:
    ```
 
 ### Windows
+
 1. Install [Node.js](https://nodejs.org/) (includes npm).
 2. Install [Rust](https://www.rust-lang.org/tools/install).
 3. Install required Windows packages:
@@ -36,12 +39,14 @@ Ensure you have the following software installed based on your operating system:
 ## Setup
 
 1. **Clone the repository:**
+
    ```bash
    git clone <repository-url>
    cd <repository-folder>
    ```
 
 2. **Install dependencies:**
+
    ```bash
    npm install
    ```
@@ -64,4 +69,3 @@ npm run tauri dev
 This will start the Vite dev server, bundle the app, and open the Tauri window with live reloading.
 
 ---
-
