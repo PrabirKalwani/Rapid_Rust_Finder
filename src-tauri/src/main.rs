@@ -10,7 +10,7 @@ use std::time::Instant;
 
 const MINIMUM_SCORE: i16 = 20;
 const SKIP_DIRECTORY: &str = "Library"; 
-const ROOT_FOLDER: &str = "E:\\";
+const ROOT_FOLDER: &str = "/Users/aayushshah/Programming";
 
 
 fn score_filename(filename: &str, query: &str) -> i16 {
@@ -72,7 +72,7 @@ struct FileIndex {
 fn search_files(query: String) -> Vec<(String, String)> {
     let start_time = Instant::now(); 
 
-    let index_path = config_dir().unwrap().join("file_index.json");
+    let index_path = config_dir().unwrap().join("new_index.json");
     let index = if index_path.exists() {
         
         println!("Loading existing index...");
