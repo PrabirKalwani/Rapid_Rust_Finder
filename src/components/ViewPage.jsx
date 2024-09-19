@@ -2,7 +2,14 @@ import { Sidebar } from "@/components/Sidebar";
 import { ResultsContainer } from "@/components/ResultsContainer";
 import { RecentsContainer } from "@/components/RecentsContainer";
 
-export const ViewPage = ({ results, loading, error, query, openFile }) => {
+export const ViewPage = ({
+  results,
+  loading,
+  error,
+  query,
+  openFile,
+  recent,
+}) => {
   return (
     <main className="grid grid-cols-9">
       <Sidebar />
@@ -15,11 +22,7 @@ export const ViewPage = ({ results, loading, error, query, openFile }) => {
           openFile={openFile}
         />
       )}
-      {
-        query == "" && (
-          <RecentsContainer />
-        )
-      }
+      {query == "" && <RecentsContainer recent={recent} />}
     </main>
   );
 };

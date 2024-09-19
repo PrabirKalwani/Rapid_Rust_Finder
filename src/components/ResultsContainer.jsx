@@ -6,6 +6,7 @@ export const ResultsContainer = ({
   loading,
   error,
   query,
+  openFile
 }) => {
   className += " col-span-7 flex flex-col gap-3 p-2";
 
@@ -42,7 +43,7 @@ export const ResultsContainer = ({
             <li
               key={index}
               className="result-item flex flex-row gap-1 border-b py-1"
-              // onClick={() => openFile(filePath)}
+              onClick={() => openFile(filePath)}
             >
               <img
                 className="icon h-12"
