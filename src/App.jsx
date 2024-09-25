@@ -6,33 +6,57 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { Navbar } from "@/components/Navbar";
 import { ViewPage } from "@/components/ViewPage";
 
+// TODO: Add compacting to Queue
+
 class Queue {
   constructor() {
-    this.items = {};
+    this.items = [];
     this.frontIndex = 0;
     this.backIndex = 0;
     this.maxLen = 10;
   }
-  enqueue(item) {
-    this.items[this.backIndex] = item;
-    this.backIndex++;
 
-    if (this.backIndex > this.maxLen) {
-      this.dequeue();
+  enqueue(item) {
+    let skip = false;
+    function redundancyCheck(value, item) {
+      if (value.fileName == item.fileName) {
+        skip = true;
+      }
+    }
+
+    this.items.forEach((value) => redundancyCheck(value, item));
+
+    if (!skip) {
+      this.items[this.backIndex] = item;
+      this.backIndex++;
+
+      if (this.backIndex > this.maxLen) {
+        this.dequeue();
+      }
     }
     // return item + ' inserted'
   }
+
   dequeue() {
-    const item = this.items[this.frontIndex];
+    // const item = this.items[this.frontIndex];
     delete this.items[this.frontIndex];
     this.frontIndex++;
     // return item
   }
+
   getItems() {
     return this.items;
   }
+
   setItems(items) {
     this.items = items;
+  }
+
+  setItemAtIndex(item, index) {
+    this.items[index] = item;
+    if (this.backIndex < index) {
+      this.backIndex = index;
+    }
   }
 }
 
@@ -47,11 +71,25 @@ function App() {
     // Invoke the get_recent_data command
     invoke("get_recent_data")
       .then((response) => {
-        console.log(response.recent);
         let recentQueue = new Queue();
-        recentQueue.setItems(response.recent);
-        setRecent(recentQueue); // response contains the 'recent' array
-        console.log("Data received from Rust:", response);
+        response.map(([key, file]) => {
+          recentQueue.setItemAtIndex(
+            {
+              fileName: file.file_name,
+              filePath: file.file_path,
+              fileSize: file.file_size,
+              fileType: file.file_type,
+              creationDate: file.creation_date,
+              formattedDate: new Date(
+                file.creation_date.secs_since_epoch * 1000
+              ).toLocaleString(), // Optional: Format the date
+            },
+            key
+          );
+        });
+        setRecent(recentQueue);
+
+        // console.log(recentQueue);
       })
       .catch((error) => {
         console.error("Error fetching data:", error);
@@ -62,8 +100,21 @@ function App() {
     setLoading(true);
     setError(null);
     try {
+      // Returns an array of objects with filename and details
       const searchResults = await invoke("search_files", { query });
-      setResults(searchResults);
+      // Transform the data structure to better work with React
+      const formattedResults = searchResults.map(([file_name, details]) => ({
+        fileName: file_name,
+        filePath: details.file_path,
+        fileSize: details.file_size,
+        fileType: details.file_type,
+        creationDate: details.creation_date,
+        formattedDate: new Date(
+          details.creation_date.secs_since_epoch * 1000
+        ).toLocaleString(), // Optional: Format the date
+      }));
+
+      setResults(formattedResults);
     } catch (error) {
       console.error("Error searching files:", error);
       setError("Failed to search files.");
@@ -87,19 +138,26 @@ function App() {
     }
   };
 
-  const openFile = (filePath) => {
-    if (filePath) {
-      window.open(filePath, "_blank");
+  const openFile = (file) => {
+    if (file["filePath"]) {
+      // window.open(filePath, "_blank");
     } else {
       console.warn("No file path provided for opening.");
     }
 
-    updateRecent(filePath);
+    updateRecent(file);
   };
 
-  const updateRecent = (filePath) => {
+  const updateRecent = (file) => {
     let recentQueue = recent;
-    recentQueue.enqueue(filePath);
+    // let fileObject = {
+    //   file_name: file["filename"],
+    //   file_path: file["filePath"],
+    //   file_type: file["fileType"],
+    //   file_size: file["fileSize"],
+    //   creation_date: file["creationDate"],
+    // };
+    recentQueue.enqueue(file);
     setRecent(recentQueue);
 
     handleRecent();
@@ -107,9 +165,22 @@ function App() {
 
   const handleRecent = async () => {
     try {
-      recentQueue = recent;
-      items = recentQueue.getItems();
-      await invoke("process_recent", { items });
+      let recentQueue = recent;
+      let items = recentQueue.getItems();
+
+      items = items.map(
+        ({ fileName, filePath, fileSize, fileType, creationDate }) => ({
+          file_name: fileName,
+          file_path: filePath,
+          file_size: fileSize,
+          file_type: fileType,
+          creation_date: creationDate,
+        })
+      );
+
+      let itemsMap = Object.assign({}, items);
+
+      await invoke("process_recent", { data: itemsMap });
     } catch (error) {
       console.error("Error: ", error);
       setError("Failed");
