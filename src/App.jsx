@@ -70,13 +70,20 @@ function App() {
   const [recent, setRecent] = useState(new Queue());
 
   useEffect(() => {
-    setupCheck;
-    loadRecent;
+    setupCheck();
+    loadRecent();
   }, []);
 
   const setupCheck = async () => {
     try {
-      flag = await invoke("setup_file_check");
+      let flag = await invoke("setup_file_check");
+      if(flag) {
+        try {
+          await invoke("load_setup");
+        } catch {
+          console.error("Error loading setup file ", error);
+        }
+      }
       setSetup(flag);
     } catch (error) {
       console.error("Error checking for setup file: ", error);
@@ -205,9 +212,10 @@ function App() {
 
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-      {/* {!setup && <SetupPage />} */}
-      {!setup && //change to setup when setup page is complete
-        (<Navbar query={query} handleChange={handleChange}></Navbar>)(
+      {!setup && <SetupPage setup={setup} setupCheck={setupCheck} />}
+      {setup && (
+        <>
+          <Navbar query={query} handleChange={handleChange} />
           <ViewPage
             setup={setup}
             results={results}
@@ -217,7 +225,8 @@ function App() {
             openFile={openFile}
             recent={recent}
           ></ViewPage>
-        )}
+        </>
+      )}
     </ThemeProvider>
   );
 }

@@ -267,6 +267,7 @@ fn search_files(query: String) -> Result<Vec<(String, FileDetails)>, String> {
         // Create a new index
         println!("Creating new index...");
         let root_folder = get_root_folder()?;
+        println!("{} is the root folder", &root_folder);
         let start_path = Path::new(&root_folder);
         let mut new_index = FileIndex {
             files: HashMap::new(),
