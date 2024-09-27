@@ -2245,6 +2245,7 @@ version = "0.1.0"
 dependencies = [
  "crossterm",
  "fuzzy-matcher",
+ "once_cell",
  "serde",
  "serde_json",
  "tauri",

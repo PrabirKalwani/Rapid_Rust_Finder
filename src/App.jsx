@@ -5,6 +5,7 @@ import "./App.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Navbar } from "@/components/Navbar";
 import { ViewPage } from "@/components/ViewPage";
+import { SetupPage } from "@/components/SetupPage";
 
 // TODO: Add compacting to Queue
 
@@ -61,6 +62,7 @@ class Queue {
 }
 
 function App() {
+  const [setup, setSetup] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -68,6 +70,20 @@ function App() {
   const [recent, setRecent] = useState(new Queue());
 
   useEffect(() => {
+    setupCheck;
+    loadRecent;
+  }, []);
+
+  const setupCheck = async () => {
+    try {
+      flag = await invoke("setup_file_check");
+      setSetup(flag);
+    } catch (error) {
+      console.error("Error checking for setup file: ", error);
+    }
+  };
+
+  const loadRecent = async () => {
     // Invoke the get_recent_data command
     invoke("get_recent_data")
       .then((response) => {
@@ -94,7 +110,7 @@ function App() {
       .catch((error) => {
         console.error("Error fetching data:", error);
       });
-  }, []);
+  };
 
   const fetchResults = async (query) => {
     setLoading(true);
@@ -189,17 +205,19 @@ function App() {
 
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-      <div className="App">
-        <Navbar query={query} handleChange={handleChange}></Navbar>
-        <ViewPage
-          results={results}
-          loading={loading}
-          error={error}
-          query={query}
-          openFile={openFile}
-          recent={recent}
-        ></ViewPage>
-      </div>
+      {/* {!setup && <SetupPage />} */}
+      {!setup && //change to setup when setup page is complete
+        (<Navbar query={query} handleChange={handleChange}></Navbar>)(
+          <ViewPage
+            setup={setup}
+            results={results}
+            loading={loading}
+            error={error}
+            query={query}
+            openFile={openFile}
+            recent={recent}
+          ></ViewPage>
+        )}
     </ThemeProvider>
   );
 }

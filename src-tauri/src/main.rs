@@ -1,22 +1,37 @@
 // TODO:
 // - Fix Indexation Time
 // - Add BFS
+// - Add The Scoring system for favorite extension types
 
 //// Imports
 use serde::{Deserialize, Serialize};
 use serde_json;
+use serde_json::json;
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::{Instant, SystemTime};
+use once_cell::sync::Lazy;
 use tauri::api::path::config_dir;
+use std::env::consts::OS as OS_TYPE;
+
+
 
 //// Constants
 const MINIMUM_SCORE: i16 = 20;
 const SKIP_DIRECTORY: &str = "Library"; // Directory to skip
-const ROOT_FOLDER: &str = "E:\\";
+const OS: &str = OS_TYPE;
+
+
+
+//// Global Variables
+static ROOT_FOLDER: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
+static EXTENSIONS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
+
+
 
 //// Data Structures
 /// Data structure to hold the index
@@ -45,6 +60,125 @@ struct Data {
 }
 
 type FileIndexMap = HashMap<i32, Data>;
+
+
+
+//// Global Variables Getter and Setters
+// Helper function to set ROOT_FOLDER using Lazy<Mutex>
+fn set_root_folder(root_folder: String) -> Result<(), String> {
+    let mut folder = ROOT_FOLDER.lock().map_err(|e| e.to_string())?;
+    *folder = root_folder;
+    Ok(())
+}
+
+// Helper function to set EXTENSIONS using Lazy<Mutex>
+fn set_extensions(extensions: Vec<String>) -> Result<(), String> {
+    let mut ext = EXTENSIONS.lock().map_err(|e| e.to_string())?;
+    *ext = extensions;
+    Ok(())
+}
+
+// Function to get the current value of ROOT_FOLDER
+fn get_root_folder() -> Result<String, String> {
+    let folder = ROOT_FOLDER.lock().map_err(|e| e.to_string())?;
+    Ok(folder.clone())
+}
+
+// Function to get the current value of EXTENSIONS
+fn get_extensions() -> Result<Vec<String>, String> {
+    let ext = EXTENSIONS.lock().map_err(|e| e.to_string())?;
+    Ok(ext.clone())
+}
+
+
+
+//// Setup Function
+/// Function to check if setup file exists
+#[tauri::command]
+async fn setup_file_check() -> Result<bool, String> {
+    // Get the path to the setup file
+    let path = config_dir().unwrap().join("setup_file.json");
+
+    // Check if the file exists
+    let exists = Path::new(&path).exists();
+    
+    Ok(exists)
+}
+
+/// Function to detect OS and return it
+#[tauri::command]
+async fn detect_os() -> Result<String, String> {
+    // Simply return the OS constant
+    Ok(OS.to_string())
+}
+
+/// Function to save root folder
+#[tauri::command]
+async fn save_root_folder(root_folder: String) -> Result<(), String> {
+    // Update the global ROOT_FOLDER
+    let _ = set_root_folder(root_folder.clone());
+
+    // Save root folder in setup.json
+    let mut setup = load_setup().await?;
+    setup["root_folder"] = serde_json::Value::String(root_folder);
+    save_setup(&setup).await?;
+    Ok(())
+}
+
+/// Function to save extensions
+#[tauri::command]
+async fn save_file_extensions(extensions: Vec<String>) -> Result<(), String> {
+    // Update the global EXTENSIONS
+    let _ = set_extensions(extensions.clone());
+
+    // Save file extensions in setup.json
+    let mut setup = load_setup().await?;
+    setup["file_extensions"] = serde_json::Value::Array(
+        extensions.into_iter().map(serde_json::Value::String).collect()
+    );
+    save_setup(&setup).await?;
+    Ok(())
+}
+
+///Function to save the setup_file.json
+async fn save_setup(setup: &serde_json::Value) -> Result<(), String> {
+    let path: PathBuf = config_dir().unwrap().join("setup_file.json");
+    fs::write(&path, setup.to_string()).map_err(|e| e.to_string())
+}
+
+///Function to load the setup_file.json
+#[tauri::command]
+async fn load_setup() -> Result<serde_json::Value, String> {
+    let path: PathBuf = config_dir().unwrap().join("setup_file.json");
+
+    let setup: serde_json::Value = if let Ok(content) = fs::read_to_string(&path) {
+        serde_json::from_str(&content).map_err(|e| e.to_string())?
+    } else {
+        // If file doesn't exist, return a new JSON structure with defaults
+        json!({
+            "os": detect_os().await.unwrap(), 
+            "root_folder": "", 
+            "file_extensions": []
+        })
+    };
+
+    // Load the values from the setup file into global variables
+    if let Some(root_folder) = setup.get("root_folder").and_then(|v| v.as_str()) {
+        set_root_folder(root_folder.to_string())?;
+    }
+
+    if let Some(extensions) = setup.get("file_extensions").and_then(|v| v.as_array()) {
+        let extensions_vec: Vec<String> = extensions
+            .iter()
+            .filter_map(|ext| ext.as_str().map(|s| s.to_string()))
+            .collect();
+        set_extensions(extensions_vec)?;
+    }
+
+    Ok(setup)
+}
+
+
 
 //// Functions to Handle Indexing
 /// Scores the filename based on whether it starts with the query string
@@ -116,10 +250,12 @@ fn index_recursive(path: &Path, index: &mut FileIndex) {
     }
 }
 
-//// Tauri Functions to export
+
+
+//// Search and Recent Export functions
 /// Searches for files based on the query
 #[tauri::command]
-fn search_files(query: String) -> Vec<(String, FileDetails)> {
+fn search_files(query: String) -> Result<Vec<(String, FileDetails)>, String> {
     let start_time = Instant::now(); // Start the timer
 
     let index_path = config_dir().unwrap().join("file_index.json");
@@ -130,7 +266,8 @@ fn search_files(query: String) -> Vec<(String, FileDetails)> {
     } else {
         // Create a new index
         println!("Creating new index...");
-        let start_path = Path::new(ROOT_FOLDER);
+        let root_folder = get_root_folder()?;
+        let start_path = Path::new(&root_folder);
         let mut new_index = FileIndex {
             files: HashMap::new(),
         };
@@ -154,7 +291,7 @@ fn search_files(query: String) -> Vec<(String, FileDetails)> {
 
     let duration = start_time.elapsed(); // Measure the elapsed time
     println!("Search completed in {:?}", duration);
-    results
+    Ok(results)
 }
 
 /// Function to save the most recently opened files into recent_files.json
@@ -165,8 +302,8 @@ fn process_recent(data: FileIndexMap) -> Result<(), String> {
     let json_data = serde_json::to_string_pretty(&data)
         .map_err(|err| format!("Failed to serialize data: {}", err))?;
 
-    let mut file =
-        File::create(file_path).map_err(|err| format!("Failed to create recent_files.json: {}", err))?;
+    let mut file = File::create(file_path)
+        .map_err(|err| format!("Failed to create recent_files.json: {}", err))?;
 
     file.write_all(json_data.as_bytes())
         .map_err(|err| format!("Failed to write data to recent_files.json: {}", err))?;
@@ -187,8 +324,8 @@ fn get_recent_data() -> Result<Vec<(i32, Data)>, String> {
     }
 
     // Open the file and create a buffered reader
-    let file =
-        File::open(file_path).map_err(|err| format!("Failed to open recent_files.json: {}", err))?;
+    let file = File::open(file_path)
+        .map_err(|err| format!("Failed to open recent_files.json: {}", err))?;
 
     let reader = BufReader::new(file);
 
@@ -203,9 +340,16 @@ fn get_recent_data() -> Result<Vec<(i32, Data)>, String> {
     Ok(vec_data)
 }
 
+
+
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
+            setup_file_check,
+            save_root_folder,
+            save_file_extensions,
+            load_setup,
             search_files,
             process_recent,
             get_recent_data
