@@ -19,12 +19,10 @@
     },
     "windows": [
       {
-        
         "title": "rust-finder",
-        
+
         "width": 800,
         "height": 600
-        
       }
     ],
     "security": {
@@ -35,11 +33,9 @@
       "targets": "all",
       "identifier": "com.rust-finder.app",
       "icon": [
-        "/Users/aayushshah/Programming/RUST_OS_PROJECT/src-tauri/icons/Icon.icns",   
-        "/Users/aayushshah/Programming/RUST_OS_PROJECT/src-tauri/icons/Icon.ico" 
+        "/Users/prabirkalwani/Programming/College_Git_Repos/PRJ_OS_Rust/src-tauri/icons/icon.icns",
+        "/Users/prabirkalwani/Programming/College_Git_Repos/PRJ_OS_Rust/src-tauri/icons/icon.ico"
       ]
-
-
     }
   }
 }
