@@ -4,34 +4,33 @@
 // - Add The Scoring system for favorite extension types
 
 //// Imports
+use once_cell::sync::Lazy;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::ThreadPoolBuilder;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use serde_json::json;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
+use std::env::consts::OS as OS_TYPE;
 use std::fs;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Instant, SystemTime};
-use once_cell::sync::Lazy;
 use tauri::api::path::config_dir;
-use std::env::consts::OS as OS_TYPE;
-
-
 
 //// Constants
 const MINIMUM_SCORE: i16 = 20;
 const SKIP_DIRECTORY: &str = "Library"; // Directory to skip
 const OS: &str = OS_TYPE;
-
-
+const DEPTH_STOP: usize = 20;
 
 //// Global Variables
 static ROOT_FOLDER: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
 static EXTENSIONS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
-
-
+static IN_MEMORY_INDEX: Lazy<Mutex<HashMap<String, FileDetails>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 //// Data Structures
 /// Data structure to hold the index
@@ -41,6 +40,7 @@ struct FileDetails {
     file_size: u64,
     file_type: String,
     creation_date: Option<SystemTime>,
+    file_extension: String,
 }
 
 /// Data structure to hold the index of files
@@ -57,11 +57,10 @@ struct Data {
     file_size: u64,
     file_type: String,
     creation_date: Option<SystemTime>,
+    file_extension: String,
 }
 
 type FileIndexMap = HashMap<i32, Data>;
-
-
 
 //// Global Variables Getter and Setters
 // Helper function to set ROOT_FOLDER using Lazy<Mutex>
@@ -90,8 +89,6 @@ fn get_extensions() -> Result<Vec<String>, String> {
     Ok(ext.clone())
 }
 
-
-
 //// Setup Function
 /// Function to check if setup file exists
 #[tauri::command]
@@ -101,7 +98,7 @@ async fn setup_file_check() -> Result<bool, String> {
 
     // Check if the file exists
     let exists = Path::new(&path).exists();
-    
+
     Ok(exists)
 }
 
@@ -110,6 +107,14 @@ async fn setup_file_check() -> Result<bool, String> {
 async fn detect_os() -> Result<String, String> {
     // Simply return the OS constant
     Ok(OS.to_string())
+}
+
+/// Function to create and save setup_file.json
+#[tauri::command]
+async fn save_setup_file(root_folder: String, extensions: Vec<String>) -> Result<(), String> {
+    save_root_folder(root_folder).await?;
+    save_file_extensions(extensions).await?;
+    Ok(())
 }
 
 /// Function to save root folder
@@ -134,7 +139,10 @@ async fn save_file_extensions(extensions: Vec<String>) -> Result<(), String> {
     // Save file extensions in setup.json
     let mut setup = load_setup().await?;
     setup["file_extensions"] = serde_json::Value::Array(
-        extensions.into_iter().map(serde_json::Value::String).collect()
+        extensions
+            .into_iter()
+            .map(serde_json::Value::String)
+            .collect(),
     );
     save_setup(&setup).await?;
     Ok(())
@@ -156,8 +164,8 @@ async fn load_setup() -> Result<serde_json::Value, String> {
     } else {
         // If file doesn't exist, return a new JSON structure with defaults
         json!({
-            "os": detect_os().await.unwrap(), 
-            "root_folder": "", 
+            "os": detect_os().await.unwrap(),
+            "root_folder": "",
             "file_extensions": []
         })
     };
@@ -177,8 +185,6 @@ async fn load_setup() -> Result<serde_json::Value, String> {
 
     Ok(setup)
 }
-
-
 
 //// Functions to Handle Indexing
 /// Scores the filename based on whether it starts with the query string
@@ -203,53 +209,203 @@ fn load_index(index_path: &Path) -> FileIndex {
     serde_json::from_reader(reader).unwrap()
 }
 
+fn load_index_into_memory(index_path: &Path) -> Result<(), String> {
+    let index = load_index(index_path);
+    // println!("{:?}", index);
+    let mut in_memory_index = IN_MEMORY_INDEX.lock().map_err(|e| e.to_string())?;
+    *in_memory_index = index.files; // Load the files into the in-memory HashMap
+    Ok(())
+}
+
+/// Loads filtered index into memory
+// fn load_filtered_index(index_path: &Path) -> HashMap<String, FileDetails> {
+//     let index = load_index(index_path);
+//     index.files
+// }
+
 /// Recursively indexes directories and subdirectories
-fn index_recursive(path: &Path, index: &mut FileIndex) {
-    if path.ends_with(SKIP_DIRECTORY) {
-        return; // Skip the directory if it matches the skip pattern
-    }
+fn index_all_files(path: &Path, index: &mut FileIndex) {
+    let mut queue: VecDeque<(PathBuf, usize)> = VecDeque::new();
+    queue.push_back((path.to_path_buf(), 0));
 
-    match fs::read_dir(path) {
-        Ok(entries) => {
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    let entry_path = entry.path();
-                    let file_name = entry.file_name().into_string().unwrap();
-                    let file_path = entry_path.display().to_string();
+    while let Some((current_path, depth)) = queue.pop_front() {
+        if depth > DEPTH_STOP {
+            continue;
+        }
 
-                    // Get metadata
-                    if let Ok(metadata) = entry.metadata() {
-                        let file_size = metadata.len(); // File size
-                        let file_type = if metadata.is_dir() {
-                            "directory".to_string()
-                        } else if metadata.is_file() {
-                            "file".to_string()
-                        } else {
-                            "unknown".to_string()
-                        };
-                        let creation_date = metadata.created().ok(); // File creation date
+        if current_path.ends_with(SKIP_DIRECTORY) {
+            continue;
+        }
 
-                        // Store the filename and associated details in the index
-                        let details = FileDetails {
-                            file_path: file_path.clone(),
-                            file_size,
-                            file_type,
-                            creation_date,
-                        };
-                        index.files.insert(file_name.clone(), details);
-                    }
+        match fs::read_dir(&current_path) {
+            Ok(entries) => {
+                for entry in entries {
+                    if let Ok(entry) = entry {
+                        let entry_path = entry.path();
+                        let file_name = entry.file_name().into_string().unwrap();
+                        let file_path = entry_path.display().to_string();
 
-                    // Recurse into subdirectories
-                    if entry_path.is_dir() {
-                        index_recursive(&entry_path, index);
+                        if let Ok(metadata) = entry.metadata() {
+                            let file_size = metadata.len();
+                            let file_type = if metadata.is_dir() {
+                                "directory".to_string()
+                            } else if metadata.is_file() {
+                                "file".to_string()
+                            } else {
+                                "unknown".to_string()
+                            };
+                            let creation_date = metadata.created().ok();
+
+                            // Extract the file extension
+                            let file_extension = entry_path
+                                .extension()
+                                .and_then(|ext| ext.to_str())
+                                .map_or("".to_string(), |ext| ext.to_string());
+
+                            let details = FileDetails {
+                                file_path: file_path.clone(),
+                                file_size,
+                                file_type,
+                                creation_date,
+                                file_extension,
+                            };
+                            index.files.insert(file_name.clone(), details);
+
+                            if entry_path.is_dir() {
+                                queue.push_back((entry_path, depth + 1));
+                            }
+                        }
                     }
                 }
             }
+            Err(e) => println!("Error reading directory: {}", e),
         }
-        Err(e) => println!("Error reading directory: {}", e),
     }
 }
 
+// Function to index files with specific extensions
+fn index_files_with_extensions(path: &Path, index: &mut FileIndex) {
+    let extensions = get_extensions().unwrap_or_default(); // Get allowed extensions
+    let mut queue: VecDeque<(PathBuf, usize)> = VecDeque::new();
+    queue.push_back((path.to_path_buf(), 0));
+
+    while let Some((current_path, depth)) = queue.pop_front() {
+        if depth > DEPTH_STOP {
+            continue;
+        }
+
+        if current_path.ends_with(SKIP_DIRECTORY) {
+            continue;
+        }
+
+        match fs::read_dir(&current_path) {
+            Ok(entries) => {
+                for entry in entries {
+                    if let Ok(entry) = entry {
+                        let entry_path = entry.path();
+                        let file_name = entry.file_name().into_string().unwrap();
+                        let file_path = entry_path.display().to_string();
+
+                        if let Ok(metadata) = entry.metadata() {
+                            let file_size = metadata.len();
+                            let file_type = if metadata.is_dir() {
+                                "directory".to_string()
+                            } else if metadata.is_file() {
+                                "file".to_string()
+                            } else {
+                                "unknown".to_string()
+                            };
+                            let creation_date = metadata.created().ok();
+
+                            let file_extension = entry_path
+                                .extension()
+                                .and_then(|ext| ext.to_str())
+                                .map_or("".to_string(), |ext| ext.to_string());
+
+                            // Check if the file extension is in the allowed list
+                            if !extensions.is_empty() && extensions.contains(&file_extension) {
+                                let details = FileDetails {
+                                    file_path: file_path.clone(),
+                                    file_size,
+                                    file_type,
+                                    creation_date,
+                                    file_extension,
+                                };
+                                index.files.insert(file_name.clone(), details);
+                            }
+
+                            if entry_path.is_dir() {
+                                queue.push_back((entry_path, depth + 1));
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => println!("Error reading directory: {}", e),
+        }
+    }
+}
+
+//// Startup function
+#[tauri::command]
+fn startup() {
+    let config_dir = config_dir().unwrap();
+    let file_index_path = config_dir.join("file_index.json");
+    let extensions_index_path = config_dir.join("extensions_index.json");
+
+    // Check if both indices exist
+    if file_index_path.exists() && extensions_index_path.exists() {
+        // If both exist, load the extensions index into memory
+        println!("Loading existing extensions index into memory...");
+        match load_index_into_memory(&extensions_index_path) {
+            Ok(_) => {
+                println!("Extensions index loaded into memory successfully.");
+            }
+            Err(e) => {
+                println!("Error loading extensions index into memory: {}", e);
+            }
+        }
+    } else {
+        // If the indices don't exist, create both file_index and extensions_index
+        println!("Creating a new file index and extensions index...");
+
+        let root_folder = match get_root_folder() {
+            Ok(folder) => folder,
+            Err(e) => {
+                println!("Error getting root folder: {}", e);
+                return;
+            }
+        };
+
+        let start_path = Path::new(&root_folder);
+        let mut new_file_index = FileIndex {
+            files: HashMap::new(),
+        };
+        let mut new_extensions_index = FileIndex {
+            files: HashMap::new(),
+        };
+
+        // Index all files for the general file index
+        index_all_files(start_path, &mut new_file_index);
+        save_index(&new_file_index, &file_index_path);
+        println!("New file index created and saved.");
+
+        // Index only files with extensions for the extensions index
+        index_files_with_extensions(start_path, &mut new_extensions_index);
+        save_index(&new_extensions_index, &extensions_index_path);
+        println!("New extensions index created and saved.");
+
+        // Load the newly created extensions index into memory
+        match load_index_into_memory(&extensions_index_path) {
+            Ok(_) => {
+                println!("New extensions index loaded into memory successfully.");
+            }
+            Err(e) => {
+                println!("Error loading new extensions index into memory: {}", e);
+            }
+        }
+    }
+}
 
 
 //// Search and Recent Export functions
@@ -258,40 +414,59 @@ fn index_recursive(path: &Path, index: &mut FileIndex) {
 fn search_files(query: String) -> Result<Vec<(String, FileDetails)>, String> {
     let start_time = Instant::now(); // Start the timer
 
-    let index_path = config_dir().unwrap().join("file_index.json");
-    let index = if index_path.exists() {
-        // Load the existing index
-        println!("Loading existing index...");
-        load_index(&index_path)
+    let index = IN_MEMORY_INDEX.lock().map_err(|e| e.to_string())?;
+    println!("{:?}", index);
+
+    // Only parallelize if the index size is large enough
+    let results = if index.len() > 100000 {
+        println!("Parallelizing search with Rayon...");
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(4)
+            .build()
+            .unwrap();
+
+        pool.install(|| {
+            index
+                .par_iter()
+                .filter_map(|(file_name, details)| {
+                    let cleaned_file_name = Path::new(file_name)
+                        .file_stem()
+                        .and_then(|stem| stem.to_str())
+                        .unwrap_or("");
+
+                    let score = score_filename(cleaned_file_name, &query);
+                    if score >= MINIMUM_SCORE {
+                        Some((file_name.clone(), details.clone())) // Return matching results
+                    } else {
+                        None // Filter out non-matching results
+                    }
+                })
+                .collect::<Vec<_>>()
+        })
     } else {
-        // Create a new index
-        println!("Creating new index...");
-        let root_folder = get_root_folder()?;
-        println!("{} is the root folder", &root_folder);
-        let start_path = Path::new(&root_folder);
-        let mut new_index = FileIndex {
-            files: HashMap::new(),
-        };
-        index_recursive(start_path, &mut new_index);
-        save_index(&new_index, &index_path);
-        new_index
+        // For small datasets, use normal iteration
+        println!("Using sequential search...");
+        index
+            .iter()
+            .filter_map(|(file_name, details)| {
+                let cleaned_file_name = Path::new(file_name)
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .unwrap_or("");
+
+                let score = score_filename(cleaned_file_name, &query);
+                if score >= MINIMUM_SCORE {
+                    Some((file_name.clone(), details.clone())) // Return matching results
+                } else {
+                    None // Filter out non-matching results
+                }
+            })
+            .collect::<Vec<_>>()
     };
-
-    let mut results = Vec::new();
-    for (file_name, details) in &index.files {
-        let cleaned_file_name = Path::new(file_name)
-            .file_stem()
-            .and_then(|stem| stem.to_str())
-            .unwrap_or("");
-
-        let score = score_filename(cleaned_file_name, &query);
-        if score >= MINIMUM_SCORE {
-            results.push((file_name.clone(), (*details).clone())); // Dereference and clone FileDetails
-        }
-    }
 
     let duration = start_time.elapsed(); // Measure the elapsed time
     println!("Search completed in {:?}", duration);
+
     Ok(results)
 }
 
@@ -341,12 +516,11 @@ fn get_recent_data() -> Result<Vec<(i32, Data)>, String> {
     Ok(vec_data)
 }
 
-
-
-
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
+            startup,
+            save_setup_file,
             setup_file_check,
             save_root_folder,
             save_file_extensions,

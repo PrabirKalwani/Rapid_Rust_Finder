@@ -12,13 +12,31 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 import { invoke } from "@tauri-apps/api/tauri";
 
-export const SetupPage = ({ setup, setupCheck }) => {
+export const SetupPage = ({ startup, setupCheck }) => {
   const [showWelcome, setShowWelcome] = useState(true);
   const [showCard, setShowCard] = useState(false);
   const [rootFolder, setRootFolder] = useState(""); // State to hold the root folder input value
+  const [extensions, setExtensions] = useState();
+
+  const commonExt = [
+    "doc",
+    "docx",
+    "pages",
+    "rtf",
+    "txt",
+    "csv",
+    "numbers",
+    "xls",
+    "xlsx",
+    "html",
+    "mp3",
+    "mp4",
+    "pptx",
+  ];
 
   useEffect(() => {
     // Hide the "Welcome" message after 1.35 seconds
@@ -41,9 +59,14 @@ export const SetupPage = ({ setup, setupCheck }) => {
   // Function to handle the form submission
   const setupData = async (e) => {
     try {
-      await invoke("save_root_folder", { rootFolder }).then(setupCheck);
+      await invoke("save_setup_file", {
+        rootFolder,
+        extensions,
+      })
+        .then(startup)
+        .then(setupCheck);
     } catch (error) {
-      console.error("Error setting up:", error);
+      console.error("Error indexing:", error);
     }
   };
 
@@ -81,18 +104,44 @@ export const SetupPage = ({ setup, setupCheck }) => {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="flex flex-col space-y-1.5">
-                  <form>
-                    <Label htmlFor="root-folder">Root Folder:</Label>
-                    {/* Input field controlled by rootFolder state */}
-                    <Input
-                      className="px-2"
-                      id="root-folder"
-                      placeholder="Enter the root folder here"
-                      value={rootFolder}
-                      onChange={(e) => setRootFolder(e.target.value)} // Update the state with input value
-                    />
-                  </form>
+                <div className="grid w-full items-center gap-4">
+                  <div className="flex flex-col spacey-y-1.5">
+                    <form>
+                      <Label htmlFor="root-folder">Root Folder:</Label>
+                      {/* Input field controlled by rootFolder state */}
+                      <Input
+                        className="px-2"
+                        id="root-folder"
+                        placeholder="Enter the root folder here"
+                        value={rootFolder}
+                        onChange={(e) => setRootFolder(e.target.value)} // Update the state with input value
+                      />
+                      <Label htmlFor="root-folder">Choose extensions</Label>
+                      <ToggleGroup
+                        type="multiple"
+                        size={"lg"}
+                        className="grid grid-cols-5"
+                        value={extensions}
+                        onValueChange={(extensions) => {
+                          if (extensions) setExtensions(extensions);
+                          console.log(extensions);
+                        }}
+                      >
+                        {commonExt.map((ext) => (
+                          <ToggleGroupItem key={ext} value={ext}>
+                            {ext}
+                          </ToggleGroupItem>
+                        ))}
+                      </ToggleGroup>
+                      <Input
+                        className="px-2"
+                        id="extensions"
+                        placeholder="Enter additional extensions"
+                        // value={}
+                        // onChange={(e) => setRootFolder(e.target.value)} // Update the state with input value
+                      />
+                    </form>
+                  </div>
                 </div>
               </CardContent>
               <CardFooter>

@@ -74,6 +74,14 @@ function App() {
     loadRecent();
   }, []);
 
+  const startup = async () => {
+    try {
+      await invoke("startup");
+    } catch (error) {
+      console.error("Error starting up: ", error);
+    }
+  };
+
   const setupCheck = async () => {
     try {
       let flag = await invoke("setup_file_check");
@@ -103,6 +111,7 @@ function App() {
               fileSize: file.file_size,
               fileType: file.file_type,
               creationDate: file.creation_date,
+              fileExtension: file.file_extension,
               formattedDate: new Date(
                 file.creation_date.secs_since_epoch * 1000
               ).toLocaleString(), // Optional: Format the date
@@ -132,6 +141,7 @@ function App() {
         fileSize: details.file_size,
         fileType: details.file_type,
         creationDate: details.creation_date,
+        fileExtension: details.file_extension,
         formattedDate: new Date(
           details.creation_date.secs_since_epoch * 1000
         ).toLocaleString(), // Optional: Format the date
@@ -147,7 +157,7 @@ function App() {
   };
 
   const debouncedFetchResults = useCallback(
-    debounce((query) => fetchResults(query), 300),
+    debounce((query) => fetchResults(query), 1000),
     []
   );
 
@@ -192,12 +202,13 @@ function App() {
       let items = recentQueue.getItems();
 
       items = items.map(
-        ({ fileName, filePath, fileSize, fileType, creationDate }) => ({
+        ({ fileName, filePath, fileSize, fileType, creationDate, fileExtension }) => ({
           file_name: fileName,
           file_path: filePath,
           file_size: fileSize,
           file_type: fileType,
           creation_date: creationDate,
+          file_extension: fileExtension,
         })
       );
 
@@ -212,7 +223,7 @@ function App() {
 
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-      {!setup && <SetupPage setup={setup} setupCheck={setupCheck} />}
+      {!setup && <SetupPage startup={startup} setupCheck={setupCheck} />}
       {setup && (
         <>
           <Navbar query={query} handleChange={handleChange} />

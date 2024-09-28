@@ -52,6 +52,7 @@ export const ResultsContainer = ({
           <TableHeader>
             <TableRow>
               <TableHead className="">File Name</TableHead>
+              <TableHead className="">File Extension</TableHead>
               <TableHead>File Type</TableHead>
               <TableHead>File Size</TableHead>
               <TableHead className="">Creation Date</TableHead>
@@ -63,6 +64,7 @@ export const ResultsContainer = ({
                 <TableCell className="font-medium">
                   {file["fileName"]}
                 </TableCell>
+                <TableCell>{file["fileExtension"]}</TableCell>
                 <TableCell>{file["fileType"]}</TableCell>
                 <TableCell>{file["fileSize"]} B</TableCell>
                 <TableCell className="">{file["formattedDate"]}</TableCell>
