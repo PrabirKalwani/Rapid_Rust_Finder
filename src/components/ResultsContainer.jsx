@@ -1,4 +1,14 @@
 import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableFooter,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 export const ResultsContainer = ({
   className,
@@ -6,8 +16,9 @@ export const ResultsContainer = ({
   loading,
   error,
   query,
+  openFile,
 }) => {
-  className += " col-span-7 flex flex-col gap-3 p-2";
+  className += " col-span-7 p-2";
 
   const getFileIcon = (filename) => {
     const extension = filename.split(".").pop().toLowerCase();
@@ -34,33 +45,33 @@ export const ResultsContainer = ({
         <span className="text-2xl">Results</span>
       </div>
       {results.length === 0 && !loading && !error && query.trim() !== "" && (
-        <p className="no-results">No results found</p>
+        <p className="text-muted-foreground">No results found</p>
       )}
       {results.length > 0 && (
-        <ul className="results-list flex flex-col gap-3">
-          {results.map(([highlightedFilename, filePath], index) => (
-            <li
-              key={index}
-              className="result-item flex flex-row gap-1 border-b py-1"
-              // onClick={() => openFile(filePath)}
-            >
-              <img
-                className="icon h-12"
-                src={`/icons/${getFileIcon(highlightedFilename)}`}
-                alt="file-icon"
-              />
-              <div className="flex flex-col gap-1 justify-start align-top">
-                <span
-                  className="filename text-md "
-                  dangerouslySetInnerHTML={{ __html: highlightedFilename }}
-                ></span>
-                <span className="file-path text-muted-foreground text-ellipsis">
-                  {filePath}
-                </span>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="">File Name</TableHead>
+              <TableHead className="">File Extension</TableHead>
+              <TableHead>File Type</TableHead>
+              <TableHead>File Size</TableHead>
+              <TableHead className="">Creation Date</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {results.map((file, index) => (
+              <TableRow key={index} onClick={() => openFile(file)}>
+                <TableCell className="font-medium">
+                  {file["fileName"]}
+                </TableCell>
+                <TableCell>{file["fileExtension"]}</TableCell>
+                <TableCell>{file["fileType"]}</TableCell>
+                <TableCell>{file["fileSize"]} B</TableCell>
+                <TableCell className="">{file["formattedDate"]}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       )}
     </section>
   );
