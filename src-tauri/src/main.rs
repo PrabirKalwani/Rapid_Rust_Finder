@@ -1,12 +1,10 @@
 // TODO:
 // - Fix Indexation Time
-// - Add BFS
 // - Add The Scoring system for favorite extension types
 
 //// Imports
 use once_cell::sync::Lazy;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use rayon::ThreadPoolBuilder;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use serde_json::json;
@@ -410,7 +408,9 @@ fn search_files(query: String) -> Result<Vec<(String, FileDetails)>, String> {
     let start_time = Instant::now(); // Start the timer
 
     let index = IN_MEMORY_INDEX.lock().map_err(|e| e.to_string())?;
-    // println!("{:?}", index);
+
+    // Convert the query to lowercase for case-insensitive comparison
+    let query_lower = query.to_lowercase();
 
     // Only parallelize if the index size is large enough
     let results = if index.len() > 1000 {
@@ -429,7 +429,10 @@ fn search_files(query: String) -> Result<Vec<(String, FileDetails)>, String> {
                         .and_then(|stem| stem.to_str())
                         .unwrap_or("");
 
-                    let score = score_filename(cleaned_file_name, &query);
+                    // Convert the filename to lowercase for case-insensitive comparison
+                    let cleaned_file_name_lower = cleaned_file_name.to_lowercase();
+
+                    let score = score_filename(&cleaned_file_name_lower, &query_lower);
                     if score >= MINIMUM_SCORE {
                         Some((file_name.clone(), details.clone())) // Return matching results
                     } else {
@@ -449,7 +452,10 @@ fn search_files(query: String) -> Result<Vec<(String, FileDetails)>, String> {
                     .and_then(|stem| stem.to_str())
                     .unwrap_or("");
 
-                let score = score_filename(cleaned_file_name, &query);
+                // Convert the filename to lowercase for case-insensitive comparison
+                let cleaned_file_name_lower = cleaned_file_name.to_lowercase();
+
+                let score = score_filename(&cleaned_file_name_lower, &query_lower);
                 if score >= MINIMUM_SCORE {
                     Some((file_name.clone(), details.clone())) // Return matching results
                 } else {

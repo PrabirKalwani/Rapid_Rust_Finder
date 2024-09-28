@@ -71,11 +71,13 @@ function App() {
   const [recent, setRecent] = useState(new Queue());
 
   useEffect(() => {
-    setupCheck();
-    if (setup) {
-      loadRecent();
-      startup();
-    }
+    setupCheck().then((flag) => {
+      if(flag) {
+        startup();
+        loadRecent();
+      }
+    });
+
   }, []);
 
   const startup = async () => {
@@ -91,6 +93,7 @@ function App() {
   const setupCheck = async () => {
     try {
       let flag = await invoke("setup_file_check");
+      console.log(flag);
       if (flag) {
         try {
           await invoke("load_setup");
@@ -99,10 +102,10 @@ function App() {
         }
       }
       setSetup(flag);
+      return flag;
     } catch (error) {
       console.error("Error checking for setup file: ", error);
     }
-    return flag;
   };
 
   const loadRecent = async () => {
@@ -164,7 +167,7 @@ function App() {
   };
 
   const debouncedFetchResults = useCallback(
-    debounce((query) => fetchResults(query), 1000),
+    debounce((query) => fetchResults(query), 300),
     []
   );
 
@@ -238,7 +241,11 @@ function App() {
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       {(!setup || !start) && (
-        <SetupPage startup={startup} setupCheck={setupCheck} loadRecent={loadRecent} />
+        <SetupPage
+          startup={startup}
+          setupCheck={setupCheck}
+          loadRecent={loadRecent}
+        />
       )}
       {setup && start && (
         <>
