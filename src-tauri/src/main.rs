@@ -10,7 +10,7 @@ use std::time::Instant;
 
 const MINIMUM_SCORE: i16 = 20;
 const SKIP_DIRECTORY: &str = "Library"; 
-const ROOT_FOLDER: &str = "/Users/aayushshah/Programming";
+const ROOT_FOLDER: &str = "/Users/aayushshah";
 
 
 fn score_filename(filename: &str, query: &str) -> i16 {

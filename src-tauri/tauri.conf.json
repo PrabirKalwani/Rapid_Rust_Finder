@@ -35,8 +35,8 @@
       "targets": "all",
       "identifier": "com.rust-finder.app",
       "icon": [
-        "/Users/aayushshah/Programming/RUST_OS_PROJECT/src-tauri/icons/Icon.icns",   
-        "/Users/aayushshah/Programming/RUST_OS_PROJECT/src-tauri/icons/Icon.ico" 
+        "src-tauri/icons/Icon.icns",   
+        "src-tauri/icons/Icon.ico" 
       ]
 
 
