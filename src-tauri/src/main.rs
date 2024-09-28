@@ -218,76 +218,18 @@ fn load_index_into_memory(index_path: &Path) -> Result<(), String> {
 }
 
 /// Recursively indexes directories and subdirectories
-fn index_all_files(path: &Path, index: &mut FileIndex) {
-    let mut queue: VecDeque<(PathBuf, usize)> = VecDeque::new();
-    queue.push_back((path.to_path_buf(), 0));
-
-    while let Some((current_path, depth)) = queue.pop_front() {
-        if depth > DEPTH_STOP {
-            continue;
-        }
-
-        if current_path.ends_with(SKIP_DIRECTORY) {
-            continue;
-        }
-
-        match fs::read_dir(&current_path) {
-            Ok(entries) => {
-                for entry in entries {
-                    if let Ok(entry) = entry {
-                        let entry_path = entry.path();
-                        let file_name = entry.file_name().into_string().unwrap();
-                        let file_path = entry_path.display().to_string();
-
-                        if let Ok(metadata) = entry.metadata() {
-                            let file_size = metadata.len();
-                            let file_type = if metadata.is_dir() {
-                                "directory".to_string()
-                            } else if metadata.is_file() {
-                                "file".to_string()
-                            } else {
-                                "unknown".to_string()
-                            };
-                            let creation_date = metadata.created().ok();
-
-                            // Extract the file extension
-                            let file_extension = entry_path
-                                .extension()
-                                .and_then(|ext| ext.to_str())
-                                .map_or("".to_string(), |ext| ext.to_string());
-
-                            let details = FileDetails {
-                                file_path: file_path.clone(),
-                                file_size,
-                                file_type,
-                                creation_date,
-                                file_extension,
-                            };
-                            index.files.insert(file_name.clone(), details);
-
-                            if entry_path.is_dir() {
-                                queue.push_back((entry_path, depth + 1));
-                            }
-                        }
-                    }
-                }
-            }
-            Err(e) => println!("Error reading directory: {}", e),
-        }
-    }
-}
-
-// Function to index files with specific extensions
-fn index_files_with_extensions(path: &Path, index: &mut FileIndex) {
+fn index_files(path: &Path, file_index: &mut FileIndex, extensions_index: &mut FileIndex) {
     let extensions = get_extensions().unwrap_or_default(); // Get allowed extensions
     let mut queue: VecDeque<(PathBuf, usize)> = VecDeque::new();
     queue.push_back((path.to_path_buf(), 0));
 
     while let Some((current_path, depth)) = queue.pop_front() {
+        // Skip if depth exceeds the allowed depth
         if depth > DEPTH_STOP {
             continue;
         }
 
+        // Skip specific directories based on your custom logic
         if current_path.ends_with(SKIP_DIRECTORY) {
             continue;
         }
@@ -297,45 +239,82 @@ fn index_files_with_extensions(path: &Path, index: &mut FileIndex) {
                 for entry in entries {
                     if let Ok(entry) = entry {
                         let entry_path = entry.path();
-                        let file_name = entry.file_name().into_string().unwrap();
+
+                        // Handle the possibility of non-UTF-8 file names
+                        let file_name = match entry.file_name().into_string() {
+                            Ok(name) => name,
+                            Err(_) => {
+                                println!("Encountered a non-UTF-8 file name. Skipping.");
+                                continue; // Skip this file and continue with the next entry
+                            }
+                        };
+
                         let file_path = entry_path.display().to_string();
 
-                        if let Ok(metadata) = entry.metadata() {
-                            let file_size = metadata.len();
-                            let file_type = if metadata.is_dir() {
-                                "directory".to_string()
-                            } else if metadata.is_file() {
-                                "file".to_string()
-                            } else {
-                                "unknown".to_string()
-                            };
-                            let creation_date = metadata.created().ok();
+                        match entry.metadata() {
+                            Ok(metadata) => {
+                                let file_size = metadata.len();
+                                let file_type = if metadata.is_dir() {
+                                    "directory".to_string()
+                                } else if metadata.is_file() {
+                                    "file".to_string()
+                                } else {
+                                    "unknown".to_string()
+                                };
+                                let creation_date = metadata.created().ok();
 
-                            let file_extension = entry_path
-                                .extension()
-                                .and_then(|ext| ext.to_str())
-                                .map_or("".to_string(), |ext| ext.to_string());
+                                // Extract the file extension
+                                let file_extension = entry_path
+                                    .extension()
+                                    .and_then(|ext| ext.to_str())
+                                    .map_or("".to_string(), |ext| ext.to_string());
 
-                            // Check if the file extension is in the allowed list
-                            if !extensions.is_empty() && extensions.contains(&file_extension) {
+                                // Populate the general file index with all files
                                 let details = FileDetails {
                                     file_path: file_path.clone(),
                                     file_size,
-                                    file_type,
+                                    file_type: file_type.clone(),
                                     creation_date,
-                                    file_extension,
+                                    file_extension: file_extension.clone(),
                                 };
-                                index.files.insert(file_name.clone(), details);
-                            }
+                                file_index.files.insert(file_name.clone(), details.clone());
 
-                            if entry_path.is_dir() {
-                                queue.push_back((entry_path, depth + 1));
+                                // If the file extension matches the allowed list, populate the extensions index
+                                if !extensions.is_empty() && extensions.contains(&file_extension) {
+                                    extensions_index.files.insert(file_name.clone(), details);
+                                }
+
+                                // If it's a directory, enqueue it for further indexing
+                                if entry_path.is_dir() {
+                                    queue.push_back((entry_path, depth + 1));
+                                }
+                            }
+                            Err(e) => {
+                                // Handle permission denied errors
+                                if e.kind() == std::io::ErrorKind::PermissionDenied {
+                                    println!(
+                                        "Permission denied for accessing: {}. Skipping.",
+                                        file_path
+                                    );
+                                } else {
+                                    println!("Error getting metadata for {}: {}", file_path, e);
+                                }
                             }
                         }
                     }
                 }
             }
-            Err(e) => println!("Error reading directory: {}", e),
+            Err(e) => {
+                // Handle permission denied errors for directories
+                if e.kind() == std::io::ErrorKind::PermissionDenied {
+                    println!(
+                        "Permission denied for directory: {}. Skipping.",
+                        current_path.display()
+                    );
+                } else {
+                    println!("Error reading directory {}: {}", current_path.display(), e);
+                }
+            }
         }
     }
 }
@@ -348,15 +327,16 @@ fn startup() {
     let extensions_index_path = config_dir.join(EXTENSIONS_INDEX);
 
     // Check if both indices exist
-    if file_index_path.exists() && extensions_index_path.exists() {
+    // if file_index_path.exists() && extensions_index_path.exists() ;; Should be the actual check
+    if file_index_path.exists() {
         // If both exist, load the extensions index into memory
-        println!("Loading existing extensions index into memory...");
+        println!("Loading existing index into memory...");
         match load_index_into_memory(&file_index_path) {
             Ok(_) => {
-                println!("Extensions index loaded into memory successfully.");
+                println!("Index loaded into memory successfully.");
             }
             Err(e) => {
-                println!("Error loading extensions index into memory: {}", e);
+                println!("Error loading index into memory: {}", e);
             }
         }
     } else {
@@ -380,22 +360,17 @@ fn startup() {
         };
 
         // Index all files for the general file index
-        index_all_files(start_path, &mut new_file_index);
+        index_files(start_path, &mut new_file_index, &mut new_extensions_index);
         save_index(&new_file_index, &file_index_path);
-        println!("New file index created and saved.");
-
-        // Index only files with extensions for the extensions index
-        index_files_with_extensions(start_path, &mut new_extensions_index);
-        save_index(&new_extensions_index, &extensions_index_path);
-        println!("New extensions index created and saved.");
+        println!("New indexes created and saved.");
 
         // Load the newly created extensions index into memory
         match load_index_into_memory(&file_index_path) {
             Ok(_) => {
-                println!("New extensions index loaded into memory successfully.");
+                println!("New index loaded into memory successfully.");
             }
             Err(e) => {
-                println!("Error loading new extensions index into memory: {}", e);
+                println!("Error loading new  index into memory: {}", e);
             }
         }
     }
