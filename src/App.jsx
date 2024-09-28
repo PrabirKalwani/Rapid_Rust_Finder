@@ -72,12 +72,11 @@ function App() {
 
   useEffect(() => {
     setupCheck().then((flag) => {
-      if(flag) {
+      if (flag) {
         startup();
         loadRecent();
       }
     });
-
   }, []);
 
   const startup = async () => {
@@ -193,13 +192,6 @@ function App() {
 
   const updateRecent = (file) => {
     let recentQueue = recent;
-    // let fileObject = {
-    //   file_name: file["filename"],
-    //   file_path: file["filePath"],
-    //   file_type: file["fileType"],
-    //   file_size: file["fileSize"],
-    //   creation_date: file["creationDate"],
-    // };
     recentQueue.enqueue(file);
     setRecent(recentQueue);
 
