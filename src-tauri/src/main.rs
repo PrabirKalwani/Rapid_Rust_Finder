@@ -25,6 +25,8 @@ const MINIMUM_SCORE: i16 = 20;
 const SKIP_DIRECTORY: &str = "Library"; // Directory to skip
 const OS: &str = OS_TYPE;
 const DEPTH_STOP: usize = 20;
+const FILE_INDEX: &str = "file_index.json";
+const EXTENSIONS_INDEX: &str = "extensions_index.json";
 
 //// Global Variables
 static ROOT_FOLDER: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
@@ -217,12 +219,6 @@ fn load_index_into_memory(index_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Loads filtered index into memory
-// fn load_filtered_index(index_path: &Path) -> HashMap<String, FileDetails> {
-//     let index = load_index(index_path);
-//     index.files
-// }
-
 /// Recursively indexes directories and subdirectories
 fn index_all_files(path: &Path, index: &mut FileIndex) {
     let mut queue: VecDeque<(PathBuf, usize)> = VecDeque::new();
@@ -350,14 +346,14 @@ fn index_files_with_extensions(path: &Path, index: &mut FileIndex) {
 #[tauri::command]
 fn startup() {
     let config_dir = config_dir().unwrap();
-    let file_index_path = config_dir.join("file_index.json");
-    let extensions_index_path = config_dir.join("extensions_index.json");
+    let file_index_path = config_dir.join(FILE_INDEX);
+    let extensions_index_path = config_dir.join(EXTENSIONS_INDEX);
 
     // Check if both indices exist
     if file_index_path.exists() && extensions_index_path.exists() {
         // If both exist, load the extensions index into memory
         println!("Loading existing extensions index into memory...");
-        match load_index_into_memory(&extensions_index_path) {
+        match load_index_into_memory(&file_index_path) {
             Ok(_) => {
                 println!("Extensions index loaded into memory successfully.");
             }
@@ -396,7 +392,7 @@ fn startup() {
         println!("New extensions index created and saved.");
 
         // Load the newly created extensions index into memory
-        match load_index_into_memory(&extensions_index_path) {
+        match load_index_into_memory(&file_index_path) {
             Ok(_) => {
                 println!("New extensions index loaded into memory successfully.");
             }
@@ -407,7 +403,6 @@ fn startup() {
     }
 }
 
-
 //// Search and Recent Export functions
 /// Searches for files based on the query
 #[tauri::command]
@@ -415,10 +410,10 @@ fn search_files(query: String) -> Result<Vec<(String, FileDetails)>, String> {
     let start_time = Instant::now(); // Start the timer
 
     let index = IN_MEMORY_INDEX.lock().map_err(|e| e.to_string())?;
-    println!("{:?}", index);
+    // println!("{:?}", index);
 
     // Only parallelize if the index size is large enough
-    let results = if index.len() > 100000 {
+    let results = if index.len() > 1000 {
         println!("Parallelizing search with Rayon...");
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(4)

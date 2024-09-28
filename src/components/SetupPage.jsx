@@ -16,7 +16,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 import { invoke } from "@tauri-apps/api/tauri";
 
-export const SetupPage = ({ startup, setupCheck }) => {
+export const SetupPage = ({ startup, loadRecent, setupCheck }) => {
   const [showWelcome, setShowWelcome] = useState(true);
   const [showCard, setShowCard] = useState(false);
   const [rootFolder, setRootFolder] = useState(""); // State to hold the root folder input value
@@ -64,6 +64,7 @@ export const SetupPage = ({ startup, setupCheck }) => {
         extensions,
       })
         .then(startup)
+        .then(loadRecent)
         .then(setupCheck);
     } catch (error) {
       console.error("Error indexing:", error);

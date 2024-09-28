@@ -63,6 +63,7 @@ class Queue {
 
 function App() {
   const [setup, setSetup] = useState(false);
+  const [start, setStart] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -71,21 +72,26 @@ function App() {
 
   useEffect(() => {
     setupCheck();
-    loadRecent();
+    if (setup) {
+      loadRecent();
+      startup();
+    }
   }, []);
 
   const startup = async () => {
     try {
       await invoke("startup");
+      setStart(true);
     } catch (error) {
       console.error("Error starting up: ", error);
+      setStart(false);
     }
   };
 
   const setupCheck = async () => {
     try {
       let flag = await invoke("setup_file_check");
-      if(flag) {
+      if (flag) {
         try {
           await invoke("load_setup");
         } catch {
@@ -96,6 +102,7 @@ function App() {
     } catch (error) {
       console.error("Error checking for setup file: ", error);
     }
+    return flag;
   };
 
   const loadRecent = async () => {
@@ -202,7 +209,14 @@ function App() {
       let items = recentQueue.getItems();
 
       items = items.map(
-        ({ fileName, filePath, fileSize, fileType, creationDate, fileExtension }) => ({
+        ({
+          fileName,
+          filePath,
+          fileSize,
+          fileType,
+          creationDate,
+          fileExtension,
+        }) => ({
           file_name: fileName,
           file_path: filePath,
           file_size: fileSize,
@@ -223,8 +237,10 @@ function App() {
 
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-      {!setup && <SetupPage startup={startup} setupCheck={setupCheck} />}
-      {setup && (
+      {(!setup || !start) && (
+        <SetupPage startup={startup} setupCheck={setupCheck} loadRecent={loadRecent} />
+      )}
+      {setup && start && (
         <>
           <Navbar query={query} handleChange={handleChange} />
           <ViewPage
