@@ -19,12 +19,10 @@
     },
     "windows": [
       {
-        
         "title": "rust-finder",
-        
+
         "width": 800,
         "height": 600
-        
       }
     ],
     "security": {
@@ -34,12 +32,7 @@
       "active": true,
       "targets": "all",
       "identifier": "com.rust-finder.app",
-      "icon": [
-        "src-tauri/icons/Icon.icns",   
-        "src-tauri/icons/Icon.ico" 
-      ]
-
-
+      "icon": ["/src-tauri/icons/icon.icns", "/src-tauri/icons/icon.ico"]
     }
   }
 }

@@ -69,3 +69,15 @@ npm run tauri dev
 This will start the Vite dev server, bundle the app, and open the Tauri window with live reloading.
 
 ---
+
+## Build
+
+To run the app in release mode:
+
+```bash
+npm run tauri build
+```
+
+This will build a os specific binary in the `src-tauri/target/release` folder.
+
+---
