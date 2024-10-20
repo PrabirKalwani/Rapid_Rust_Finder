@@ -2,7 +2,16 @@
 
 This Readme provides step step instuctions on how run the application .
 
-## Prerequisites
+## Run this locally on you machine
+
+1. For MacOS/Linux Devices
+   ```bash
+   brew tap prabirkalwani/rust-finder
+   brew install rust-finder
+   ```
+2. For Windows Vist the release page and download the latest release and run the executable.
+
+## Developnment Environment
 
 Ensure you have the following software installed based on your operating system:
 
