@@ -69,6 +69,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [recent, setRecent] = useState(new Queue());
+  const [selectedFile, setSelectedFile] = useState(null);
 
   useEffect(() => {
     setupCheck().then((flag) => {
@@ -92,7 +93,6 @@ function App() {
   const setupCheck = async () => {
     try {
       let flag = await invoke("setup_file_check");
-      console.log(flag);
       if (flag) {
         try {
           await invoke("load_setup");
@@ -112,25 +112,17 @@ function App() {
     invoke("get_recent_data")
       .then((response) => {
         let recentQueue = new Queue();
+        console.log(response);
         response.map(([key, file]) => {
           recentQueue.setItemAtIndex(
             {
-              fileName: file.file_name,
-              filePath: file.file_path,
-              fileSize: file.file_size,
-              fileType: file.file_type,
-              creationDate: file.creation_date,
-              fileExtension: file.file_extension,
-              formattedDate: new Date(
-                file.creation_date.secs_since_epoch * 1000
-              ).toLocaleString(), // Optional: Format the date
+              fileName: file[0],
+              filePath: file[1],
             },
             key
           );
         });
         setRecent(recentQueue);
-
-        // console.log(recentQueue);
       })
       .catch((error) => {
         console.error("Error fetching data:", error);
@@ -143,17 +135,11 @@ function App() {
     try {
       // Returns an array of objects with filename and details
       const searchResults = await invoke("search_files", { query });
+
       // Transform the data structure to better work with React
-      const formattedResults = searchResults.map(([file_name, details]) => ({
+      const formattedResults = searchResults.map(([file_name, file_path]) => ({
         fileName: file_name,
-        filePath: details.file_path,
-        fileSize: details.file_size,
-        fileType: details.file_type,
-        creationDate: details.creation_date,
-        fileExtension: details.file_extension,
-        formattedDate: new Date(
-          details.creation_date.secs_since_epoch * 1000
-        ).toLocaleString(), // Optional: Format the date
+        filePath: file_path,
       }));
 
       setResults(formattedResults);
@@ -182,7 +168,10 @@ function App() {
 
   const openFile = (file) => {
     if (file["filePath"]) {
-      // window.open(filePath, "_blank");
+
+      invoke("open_file", { path: file.filePath })
+        .then(() => console.log(`File opened: ${file.filePath}`))
+        .catch((error) => console.error("Failed to open file:", error));
     } else {
       console.warn("No file path provided for opening.");
     }
@@ -203,30 +192,65 @@ function App() {
       let recentQueue = recent;
       let items = recentQueue.getItems();
 
-      items = items.map(
-        ({
-          fileName,
-          filePath,
-          fileSize,
-          fileType,
-          creationDate,
-          fileExtension,
-        }) => ({
-          file_name: fileName,
-          file_path: filePath,
-          file_size: fileSize,
-          file_type: fileType,
-          creation_date: creationDate,
-          file_extension: fileExtension,
-        })
-      );
+      let itemsArray = Object.entries(items).map(([key, value]) => [
+        parseInt(key), // Convert key to integer
+        [value.fileName, value.filePath], // Value as a tuple of [fileName, filePath]
+      ]);
 
-      let itemsMap = Object.assign({}, items);
-
-      await invoke("process_recent", { data: itemsMap });
+      await invoke("process_recent", { data: itemsArray });
     } catch (error) {
       console.error("Error: ", error);
       setError("Failed");
+    }
+  };
+
+  const getFileIcon = (filename) => {
+    const split = filename.split(".");
+    if(split.length < 2){
+      return "latte/_folder.svg"
+    }
+    else {
+      const extension = split.pop().toLowerCase();
+      switch (extension) {
+        case "pdf":
+          return "latte/pdf.svg";
+        case "jpg":
+        case "jpeg":
+        case "png":
+          return "latte/image.svg";
+        case "csv":
+          return "latte/csv.svg";
+        case "xls":
+        case "xlsx":
+          return "latte/ms-excel.svg";
+        case "doc":
+        case "docx":
+          return "latte/ms-word.svg";
+        case "pptx":
+          return "latte/ms-powerpoint.svg";
+        case "txt":
+          return "latte/text.svg";
+  
+        case "js":
+          return "latte/javascript.svg";
+        case "ts":
+          return "latte/typescript.svg";
+        case "css":
+          return "latte/css.svg";
+        case "html":
+          return "latte/html.svg";
+        case "py":
+          return "latte/python.svg";
+        case "rs":
+          return "latte/rust.svg";
+  
+        case "exe":
+          return "latte/exe.svg";
+        case "":
+          return "latte/_folder.svg"
+        default:
+          return "latte/_file.svg";
+      }
     }
   };
 
@@ -241,7 +265,6 @@ function App() {
       )}
       {setup && start && (
         <>
-          <Navbar query={query} handleChange={handleChange} />
           <ViewPage
             setup={setup}
             results={results}
@@ -250,6 +273,10 @@ function App() {
             query={query}
             openFile={openFile}
             recent={recent}
+            getFileIcon={getFileIcon}
+            handleChange={handleChange}
+            selectedFile={selectedFile}
+            setSelectedFile={setSelectedFile}
           ></ViewPage>
         </>
       )}

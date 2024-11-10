@@ -1,15 +1,3 @@
-import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCaption,
-  TableCell,
-  TableFooter,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-
 export const ResultsContainer = ({
   className,
   results,
@@ -17,61 +5,56 @@ export const ResultsContainer = ({
   error,
   query,
   openFile,
+  getFileIcon,
+  selectedFile,
+  setSelectedFile,
 }) => {
-  className += " col-span-7 p-2";
+  className += " px-4 py-6";
+  
+  let lastClickTime = Date.now();
 
-  const getFileIcon = (filename) => {
-    const extension = filename.split(".").pop().toLowerCase();
-    switch (extension) {
-      case "pdf":
-        return "pdf.png";
-      case "docx":
-        return "docx.png";
-      case "xlsx":
-        return "xlsx.png";
-      case "jpg":
-      case "jpeg":
-        return "image.png";
-      case "png":
-        return "image.png";
-      default:
-        return "default.png";
+  const handleClicks = (file) => {
+    const now = Date.now();
+    // const difference = now - lastClickTime;
+    // console.log(difference)
+    if (now - lastClickTime < 300) {
+      // console.log("Double-click detected");
+      openFile(file);
+    } else {
+      // console.log("Single-click detected");
+      // Highlight selected file immediately
+      setSelectedFile(file === selectedFile ? null : file);
     }
+    
+    lastClickTime = now;
   };
 
   return (
     <section className={className}>
-      <div>
-        <span className="text-2xl">Results</span>
-      </div>
       {results.length === 0 && !loading && !error && query.trim() !== "" && (
-        <p className="text-muted-foreground">No results found</p>
+        <p className="text-muted-foreground">No files to show</p>
       )}
       {results.length > 0 && (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="">File Name</TableHead>
-              <TableHead className="">File Extension</TableHead>
-              <TableHead>File Type</TableHead>
-              <TableHead>File Size</TableHead>
-              <TableHead className="">Creation Date</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {results.map((file, index) => (
-              <TableRow key={index} onClick={() => openFile(file)}>
-                <TableCell className="font-medium">
-                  {file["fileName"]}
-                </TableCell>
-                <TableCell>{file["fileExtension"]}</TableCell>
-                <TableCell>{file["fileType"]}</TableCell>
-                <TableCell>{file["fileSize"]} B</TableCell>
-                <TableCell className="">{file["formattedDate"]}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
+          {results.map((file, index) => (
+            <div
+              className={`flex flex-col items-center text-ellipsis p-2 gap-2 ${
+                file === selectedFile ? "bg-secondary shadow-sm rounded-sm" : ""
+              }`}
+              key={index}
+              onClick={() => handleClicks(file)}
+            >
+              <img
+                src={`/icons/${getFileIcon(file.fileName)}`}
+                alt={file.fileName}
+                className="w-8 h-8 sm:w-12 sm:h-12 md:w-16 md:h-16 lg:w-20 lg:h-20 xl:w-24 xl:h-24"
+              />
+              <p className="truncate w-full text-center text-sm">
+                {file.fileName.split(".")[0]}
+              </p>
+            </div>
+          ))}
+        </div>
       )}
     </section>
   );

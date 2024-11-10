@@ -17,6 +17,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Instant, SystemTime};
 use tauri::api::path::config_dir;
+use tauri::Manager;
 
 //// Constants
 const MINIMUM_SCORE: i16 = 20;
@@ -29,8 +30,7 @@ const EXTENSIONS_INDEX: &str = "extensions_index.json";
 //// Global Variables
 static ROOT_FOLDER: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
 static EXTENSIONS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
-static IN_MEMORY_INDEX: Lazy<Mutex<HashMap<String, FileDetails>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
+static IN_MEMORY_INDEX: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
 //// Data Structures
 /// Data structure to hold the index
@@ -59,8 +59,6 @@ struct Data {
     creation_date: Option<SystemTime>,
     file_extension: String,
 }
-
-type FileIndexMap = HashMap<i32, Data>;
 
 //// Global Variables Getter and Setters
 // Helper function to set ROOT_FOLDER using Lazy<Mutex>
@@ -203,18 +201,23 @@ fn save_index(index: &FileIndex, index_path: &Path) {
 }
 
 /// Loads the index from a file
-fn load_index(index_path: &Path) -> FileIndex {
-    let file = File::open(index_path).unwrap();
-    let reader = BufReader::new(file);
-    serde_json::from_reader(reader).unwrap()
-}
+fn load_index(index_path: &Path) {
+    // Load the index from the file and deserialize it
+    let index: FileIndex = match fs::read_to_string(index_path) {
+        Ok(content) => serde_json::from_str(&content).unwrap_or_else(|_| FileIndex { files: HashMap::new() }),
+        Err(_) => FileIndex { files: HashMap::new() },
+    };
 
-fn load_index_into_memory(index_path: &Path) -> Result<(), String> {
-    let index = load_index(index_path);
-    // println!("{:?}", index);
-    let mut in_memory_index = IN_MEMORY_INDEX.lock().map_err(|e| e.to_string())?;
-    *in_memory_index = index.files; // Load the files into the in-memory HashMap
-    Ok(())
+    // Acquire a lock on the in-memory index and clear any existing entries
+    let mut in_memory_index = IN_MEMORY_INDEX.lock().unwrap();
+    in_memory_index.clear();  // Clear existing entries if any
+
+    // Insert only file names and their paths into the in-memory hashmap
+    for (file_name, details) in index.files.iter() {
+        in_memory_index.insert(file_name.clone(), details.file_path.clone()); // Store file name and path only
+    }
+
+    println!("Index loaded with file names and paths.");
 }
 
 /// Recursively indexes directories and subdirectories
@@ -326,21 +329,14 @@ fn startup() {
     let file_index_path = config_dir.join(FILE_INDEX);
     let extensions_index_path = config_dir.join(EXTENSIONS_INDEX);
 
-    // Check if both indices exist
-    // if file_index_path.exists() && extensions_index_path.exists() ;; Should be the actual check
+    // Check if the main file index exists
     if file_index_path.exists() {
-        // If both exist, load the extensions index into memory
+        // Load the file index into memory if it exists
         println!("Loading existing index into memory...");
-        match load_index_into_memory(&file_index_path) {
-            Ok(_) => {
-                println!("Index loaded into memory successfully.");
-            }
-            Err(e) => {
-                println!("Error loading index into memory: {}", e);
-            }
-        }
+        load_index(&file_index_path);
+        println!("Index loaded into memory successfully.");
     } else {
-        // If the indices don't exist, create both file_index and extensions_index
+        // If the index doesn't exist, create new file and extensions indices
         println!("Creating a new file index and extensions index...");
 
         let root_folder = match get_root_folder() {
@@ -359,36 +355,33 @@ fn startup() {
             files: HashMap::new(),
         };
 
-        // Index all files for the general file index
+        // Index all files in the root folder
         index_files(start_path, &mut new_file_index, &mut new_extensions_index);
+        
+        // Save the new indices to the specified paths
         save_index(&new_file_index, &file_index_path);
         println!("New indexes created and saved.");
 
-        // Load the newly created extensions index into memory
-        match load_index_into_memory(&file_index_path) {
-            Ok(_) => {
-                println!("New index loaded into memory successfully.");
-            }
-            Err(e) => {
-                println!("Error loading new  index into memory: {}", e);
-            }
-        }
+        // Load the newly created file index into memory
+        load_index(&file_index_path);
+        println!("New index loaded into memory successfully.");
     }
 }
 
 //// Search and Recent Export functions
 /// Searches for files based on the query
 #[tauri::command]
-fn search_files(query: String) -> Result<Vec<(String, FileDetails)>, String> {
+fn search_files(query: String) -> Result<Vec<(String, String)>, String> {
     let start_time = Instant::now(); // Start the timer
 
+    // Acquire a lock on the in-memory index
     let index = IN_MEMORY_INDEX.lock().map_err(|e| e.to_string())?;
 
     // Convert the query to lowercase for case-insensitive comparison
     let query_lower = query.to_lowercase();
 
-    // Only parallelize if the index size is large enough
-    let results = if index.len() > 1000 {
+    // Determine if parallel processing is needed
+    let results: Vec<(String, String)> = if index.len() > 1000 {
         println!("Parallelizing search with Rayon...");
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(4)
@@ -398,7 +391,7 @@ fn search_files(query: String) -> Result<Vec<(String, FileDetails)>, String> {
         pool.install(|| {
             index
                 .par_iter()
-                .filter_map(|(file_name, details)| {
+                .filter_map(|(file_name, file_path)| {
                     let cleaned_file_name = Path::new(file_name)
                         .file_stem()
                         .and_then(|stem| stem.to_str())
@@ -407,21 +400,22 @@ fn search_files(query: String) -> Result<Vec<(String, FileDetails)>, String> {
                     // Convert the filename to lowercase for case-insensitive comparison
                     let cleaned_file_name_lower = cleaned_file_name.to_lowercase();
 
+                    // Calculate the similarity score
                     let score = score_filename(&cleaned_file_name_lower, &query_lower);
                     if score >= MINIMUM_SCORE {
-                        Some((file_name.clone(), details.clone())) // Return matching results
+                        Some((file_name.clone(), file_path.clone())) // Return matching file names and paths
                     } else {
                         None // Filter out non-matching results
                     }
                 })
-                .collect::<Vec<_>>()
+                .collect()
         })
     } else {
-        // For small datasets, use normal iteration
+        // For small datasets, use sequential iteration
         println!("Using sequential search...");
         index
             .iter()
-            .filter_map(|(file_name, details)| {
+            .filter_map(|(file_name, file_path)| {
                 let cleaned_file_name = Path::new(file_name)
                     .file_stem()
                     .and_then(|stem| stem.to_str())
@@ -430,14 +424,15 @@ fn search_files(query: String) -> Result<Vec<(String, FileDetails)>, String> {
                 // Convert the filename to lowercase for case-insensitive comparison
                 let cleaned_file_name_lower = cleaned_file_name.to_lowercase();
 
+                // Calculate the similarity score
                 let score = score_filename(&cleaned_file_name_lower, &query_lower);
                 if score >= MINIMUM_SCORE {
-                    Some((file_name.clone(), details.clone())) // Return matching results
+                    Some((file_name.clone(), file_path.clone())) // Return matching file names and paths
                 } else {
                     None // Filter out non-matching results
                 }
             })
-            .collect::<Vec<_>>()
+            .collect()
     };
 
     let duration = start_time.elapsed(); // Measure the elapsed time
@@ -446,17 +441,21 @@ fn search_files(query: String) -> Result<Vec<(String, FileDetails)>, String> {
     Ok(results)
 }
 
+
 /// Function to save the most recently opened files into recent_files.json
 #[tauri::command]
-fn process_recent(data: FileIndexMap) -> Result<(), String> {
+fn process_recent(data: Vec<(i32, (String, String))>) -> Result<(), String> {
+    let data_map: HashMap<i32, (String, String)> = data.into_iter().collect();
+    
     let file_path: PathBuf = config_dir().unwrap().join("recent_files.json");
 
-    let json_data = serde_json::to_string_pretty(&data)
+    // Serialize file names and file paths into JSON
+    let json_data = serde_json::to_string_pretty(&data_map)
         .map_err(|err| format!("Failed to serialize data: {}", err))?;
 
+    // Write JSON data to recent_files.json
     let mut file = File::create(file_path)
         .map_err(|err| format!("Failed to create recent_files.json: {}", err))?;
-
     file.write_all(json_data.as_bytes())
         .map_err(|err| format!("Failed to write data to recent_files.json: {}", err))?;
 
@@ -464,9 +463,9 @@ fn process_recent(data: FileIndexMap) -> Result<(), String> {
     Ok(())
 }
 
-/// Function to retrieve the most recently opened files from recent.json
+/// Function to retrieve the most recently opened files from recent_files.json
 #[tauri::command]
-fn get_recent_data() -> Result<Vec<(i32, Data)>, String> {
+fn get_recent_data() -> Result<Vec<(i32, (String, String))>, String> {
     let file_path = config_dir().unwrap().join("recent_files.json");
 
     // If the file doesn't exist, return an empty vector
@@ -475,21 +474,27 @@ fn get_recent_data() -> Result<Vec<(i32, Data)>, String> {
         return Ok(Vec::new());
     }
 
-    // Open the file and create a buffered reader
+    // Open recent_files.json and deserialize it to retrieve file names and paths
     let file = File::open(file_path)
         .map_err(|err| format!("Failed to open recent_files.json: {}", err))?;
-
     let reader = BufReader::new(file);
 
-    // Deserialize the JSON data into a HashMap<i32, Data>
-    let data: HashMap<i32, Data> = serde_json::from_reader(reader)
+    // Deserialize JSON data into HashMap<i32, (String, String)>
+    let data: HashMap<i32, (String, String)> = serde_json::from_reader(reader)
         .map_err(|err| format!("Failed to parse recent_files.json: {}", err))?;
 
-    // Convert the HashMap into a Vec<(i32, Data)>
-    let vec_data: Vec<(i32, Data)> = data.into_iter().collect();
+    // Convert HashMap to Vec<(i32, (String, String))>
+    let vec_data: Vec<(i32, (String, String))> = data.into_iter().collect();
 
     println!("Recent files successfully loaded and converted from recent_files.json");
     Ok(vec_data)
+}
+
+#[tauri::command]
+fn open_file(app_handle: tauri::AppHandle, path: String) -> Result<(), String> {
+    let shell_scope = app_handle.shell_scope();
+    tauri::api::shell::open(&shell_scope, path, None)
+        .map_err(|e| format!("Failed to open file: {}", e))
 }
 
 fn main() {
@@ -503,7 +508,8 @@ fn main() {
             load_setup,
             search_files,
             process_recent,
-            get_recent_data
+            get_recent_data, 
+            open_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
