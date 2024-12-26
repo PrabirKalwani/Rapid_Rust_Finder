@@ -275,9 +275,20 @@ function App() {
       )}
       {(setup && !start) && (
         <div className="flex flex-col items-center justify-center h-screen">
-          <div className="spinner border-t-4 border-blue-500 rounded-full w-16 h-16 animate-spin"></div>
-          <p className="mt-4 text-white">Indexing files...</p>
+        <div className="w-16 h-16 border-[5px] border-primary border-b-transparent rounded-full inline-block animate-[rotation_1s_linear_infinite]">
+          <style jsx>{`
+            @keyframes rotation {
+              0% {
+                transform: rotate(0deg);
+              }
+              100% {
+                transform: rotate(360deg);
+              }
+            }
+          `}</style>
         </div>
+        <p className="mt-4 text-xl">Indexing Files</p>
+      </div>
       )}
       {setup && start && (
         <>
