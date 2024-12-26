@@ -16,7 +16,7 @@ import {
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
 
-export function SidebarGroupItems({ groupTitle, items }) {
+export function SidebarGroupItems({ groupTitle, items, openFile }) {
   return (
     <SidebarGroup>
       <SidebarGroupLabel>{groupTitle}</SidebarGroupLabel>
@@ -41,9 +41,17 @@ export function SidebarGroupItems({ groupTitle, items }) {
                   {item.items?.map((subItem) => (
                     <SidebarMenuSubItem key={subItem.title}>
                       <SidebarMenuSubButton asChild>
-                        <a href={subItem.url}>
-                          <span>{subItem.title}</span>
-                        </a>
+                        <div
+                          className="text-nowrap"
+                          onClick={() =>
+                            openFile({
+                              fileName: subItem.title,
+                              filePath: subItem.url,
+                            })
+                          }
+                        >
+                          {subItem.title}
+                        </div>
                       </SidebarMenuSubButton>
                     </SidebarMenuSubItem>
                   ))}

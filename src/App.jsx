@@ -1,11 +1,16 @@
 import React, { useState, useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
+import { listen } from "@tauri-apps/api/event";
 import debounce from "lodash.debounce";
 import "./App.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Navbar } from "@/components/Navbar";
 import { ViewPage } from "@/components/ViewPage";
 import { SetupPage } from "@/components/SetupPage";
+// import { i } from "vite/dist/node/types.d-aGj9QkWt";
+import {
+  Folder,
+} from "lucide-react"
 
 // TODO: Add compacting to Queue
 
@@ -69,64 +74,75 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [recent, setRecent] = useState(new Queue());
+  const [keyFolders, setKeyFolders] = useState({});
   const [selectedFile, setSelectedFile] = useState(null);
 
   useEffect(() => {
-    setupCheck().then((flag) => {
-      if (flag) {
-        startup();
-        loadRecent();
-      }
-    });
+    startup();
   }, []);
 
   const startup = async () => {
     try {
-      await invoke("startup");
-      setStart(true);
+      invoke("startup").then((response) => {
+        if (response.valid) {
+          setSetup(true);
+          let recentQueue = new Queue();
+          response.recent_files.map(([key, file]) => {
+            recentQueue.setItemAtIndex(
+              {
+                fileName: file[0],
+                filePath: file[1],
+              },
+              key
+            );
+          });
+          setRecent(recentQueue);
+        } else {
+          setSetup(false);
+        }
+  
+        // Function to filter out `.folder_path` and map the rest to items
+        const formatKeyFolders = (keyFolders) =>
+          Object.keys(keyFolders).map((folderKey) => {
+            const folderData = keyFolders[folderKey];
+            const items = Object.entries(folderData)
+              .filter(([key]) => key !== ".folder_path")
+              .map(([title, url]) => ({
+                title,
+                url,
+              }));
+  
+            return {
+              title: folderKey,
+              url: folderData[".folder_path"] || "#",
+              icon: Folder,
+              isActive: false,
+              items,
+            };
+          });
+  
+        const keyFoldersCleaned = formatKeyFolders(response.key_folders);
+        setKeyFolders(keyFoldersCleaned);
+        console.log(keyFoldersCleaned);
+      });
+  
+      // Listen for indexing events
+      listen("index-found", () => {
+        console.log("Index found");
+        setStart(true);
+      });
+  
+      listen("indexing-started", () => {
+        console.log("Indexing started");
+      });
+  
+      listen("indexing-completed", () => {
+        console.log("Indexing completed");
+        setStart(true);
+      });
     } catch (error) {
       console.error("Error starting up: ", error);
-      setStart(false);
     }
-  };
-
-  const setupCheck = async () => {
-    try {
-      let flag = await invoke("setup_file_check");
-      if (flag) {
-        try {
-          await invoke("load_setup");
-        } catch {
-          console.error("Error loading setup file ", error);
-        }
-      }
-      setSetup(flag);
-      return flag;
-    } catch (error) {
-      console.error("Error checking for setup file: ", error);
-    }
-  };
-
-  const loadRecent = async () => {
-    // Invoke the get_recent_data command
-    invoke("get_recent_data")
-      .then((response) => {
-        let recentQueue = new Queue();
-        console.log(response);
-        response.map(([key, file]) => {
-          recentQueue.setItemAtIndex(
-            {
-              fileName: file[0],
-              filePath: file[1],
-            },
-            key
-          );
-        });
-        setRecent(recentQueue);
-      })
-      .catch((error) => {
-        console.error("Error fetching data:", error);
-      });
   };
 
   const fetchResults = async (query) => {
@@ -168,7 +184,6 @@ function App() {
 
   const openFile = (file) => {
     if (file["filePath"]) {
-
       invoke("open_file", { path: file.filePath })
         .then(() => console.log(`File opened: ${file.filePath}`))
         .catch((error) => console.error("Failed to open file:", error));
@@ -206,10 +221,9 @@ function App() {
 
   const getFileIcon = (filename) => {
     const split = filename.split(".");
-    if(split.length < 2){
-      return "latte/_folder.svg"
-    }
-    else {
+    if (split.length < 2) {
+      return "latte/_folder.svg";
+    } else {
       const extension = split.pop().toLowerCase();
       switch (extension) {
         case "pdf":
@@ -230,7 +244,7 @@ function App() {
           return "latte/ms-powerpoint.svg";
         case "txt":
           return "latte/text.svg";
-  
+
         case "js":
           return "latte/javascript.svg";
         case "ts":
@@ -243,11 +257,11 @@ function App() {
           return "latte/python.svg";
         case "rs":
           return "latte/rust.svg";
-  
+
         case "exe":
           return "latte/exe.svg";
         case "":
-          return "latte/_folder.svg"
+          return "latte/_folder.svg";
         default:
           return "latte/_file.svg";
       }
@@ -256,12 +270,14 @@ function App() {
 
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-      {(!setup || !start) && (
-        <SetupPage
-          startup={startup}
-          setupCheck={setupCheck}
-          loadRecent={loadRecent}
-        />
+      {(!setup && !start) && (
+        <SetupPage setSetup={setSetup}/>
+      )}
+      {(setup && !start) && (
+        <div className="flex flex-col items-center justify-center h-screen">
+          <div className="spinner border-t-4 border-blue-500 rounded-full w-16 h-16 animate-spin"></div>
+          <p className="mt-4 text-white">Indexing files...</p>
+        </div>
       )}
       {setup && start && (
         <>
@@ -277,6 +293,7 @@ function App() {
             handleChange={handleChange}
             selectedFile={selectedFile}
             setSelectedFile={setSelectedFile}
+            keyFolders={keyFolders}
           ></ViewPage>
         </>
       )}

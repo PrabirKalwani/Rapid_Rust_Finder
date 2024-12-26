@@ -17,11 +17,12 @@ export const ViewPage = ({
   getFileIcon,
   handleChange,
   selectedFile,
-  setSelectedFile
+  setSelectedFile,
+  keyFolders,
 }) => {
   return (
     <SidebarProvider>
-      <AppSidebar query={query} handleChange={handleChange} />
+      <AppSidebar query={query} handleChange={handleChange} keyFolders={keyFolders} openFile={openFile}/>
       <SidebarInset>
         <main>
           <Navbar text={query != "" ? "Results" : "Recent Files"} path={selectedFile === null ? null : selectedFile.filePath}/>
