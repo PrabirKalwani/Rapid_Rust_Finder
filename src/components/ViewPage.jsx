@@ -1,6 +1,11 @@
-import { Sidebar } from "@/components/Sidebar";
 import { ResultsContainer } from "@/components/ResultsContainer";
-import { RecentsContainer } from "@/components/RecentsContainer";
+import {
+  SidebarProvider,
+  SidebarTrigger,
+  SidebarInset,
+} from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/app-sidebar";
+import { Navbar } from "./Navbar";
 
 export const ViewPage = ({
   results,
@@ -9,20 +14,30 @@ export const ViewPage = ({
   query,
   openFile,
   recent,
+  getFileIcon,
+  handleChange,
+  selectedFile,
+  setSelectedFile,
+  keyFolders,
 }) => {
   return (
-    <main className="grid grid-cols-9">
-      <Sidebar />
-      {query != "" && (
-        <ResultsContainer
-          results={results}
-          loading={loading}
-          error={error}
-          query={query}
-          openFile={openFile}
-        />
-      )}
-      {query == "" && <RecentsContainer recent={recent} />}
-    </main>
+    <SidebarProvider>
+      <AppSidebar query={query} handleChange={handleChange} keyFolders={keyFolders} openFile={openFile}/>
+      <SidebarInset>
+        <main>
+          <Navbar text={query != "" ? "Results" : "Recent Files"} path={selectedFile === null ? null : selectedFile.filePath}/>
+          <ResultsContainer
+            results={query != "" ? results : recent.getItems()}
+            loading={loading}
+            error={error}
+            query={query}
+            openFile={openFile}
+            getFileIcon={getFileIcon}
+            selectedFile={selectedFile}
+            setSelectedFile={setSelectedFile}
+          />
+        </main>
+      </SidebarInset>
+    </SidebarProvider>
   );
 };

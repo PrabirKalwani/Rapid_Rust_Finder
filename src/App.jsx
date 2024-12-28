@@ -1,11 +1,16 @@
 import React, { useState, useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
+import { listen } from "@tauri-apps/api/event";
 import debounce from "lodash.debounce";
 import "./App.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Navbar } from "@/components/Navbar";
 import { ViewPage } from "@/components/ViewPage";
 import { SetupPage } from "@/components/SetupPage";
+// import { i } from "vite/dist/node/types.d-aGj9QkWt";
+import {
+  Folder,
+} from "lucide-react"
 
 // TODO: Add compacting to Queue
 
@@ -69,72 +74,75 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [recent, setRecent] = useState(new Queue());
+  const [keyFolders, setKeyFolders] = useState({});
+  const [selectedFile, setSelectedFile] = useState(null);
 
   useEffect(() => {
-    setupCheck().then((flag) => {
-      if (flag) {
-        startup();
-        loadRecent();
-      }
-    });
+    startup();
   }, []);
 
   const startup = async () => {
     try {
-      await invoke("startup");
-      setStart(true);
+      invoke("startup").then((response) => {
+        if (response.valid) {
+          setSetup(true);
+          let recentQueue = new Queue();
+          response.recent_files.map(([key, file]) => {
+            recentQueue.setItemAtIndex(
+              {
+                fileName: file[0],
+                filePath: file[1],
+              },
+              key
+            );
+          });
+          setRecent(recentQueue);
+        } else {
+          setSetup(false);
+        }
+  
+        // Function to filter out `.folder_path` and map the rest to items
+        const formatKeyFolders = (keyFolders) =>
+          Object.keys(keyFolders).map((folderKey) => {
+            const folderData = keyFolders[folderKey];
+            const items = Object.entries(folderData)
+              .filter(([key]) => key !== ".folder_path")
+              .map(([title, url]) => ({
+                title,
+                url,
+              }));
+  
+            return {
+              title: folderKey,
+              url: folderData[".folder_path"] || "#",
+              icon: Folder,
+              isActive: false,
+              items,
+            };
+          });
+  
+        const keyFoldersCleaned = formatKeyFolders(response.key_folders);
+        setKeyFolders(keyFoldersCleaned);
+        console.log(keyFoldersCleaned);
+      });
+  
+      // Listen for indexing events
+      listen("index-found", () => {
+        console.log("Index found");
+        setStart(true);
+      });
+  
+      listen("indexing-started", () => {
+        console.log("Indexing started");
+      });
+  
+      listen("indexing-completed", () => {
+        console.log("Indexing completed");
+        setStart(true);
+      });
     } catch (error) {
       console.error("Error starting up: ", error);
-      setStart(false);
     }
-  };
-
-  const setupCheck = async () => {
-    try {
-      let flag = await invoke("setup_file_check");
-      console.log(flag);
-      if (flag) {
-        try {
-          await invoke("load_setup");
-        } catch {
-          console.error("Error loading setup file ", error);
-        }
-      }
-      setSetup(flag);
-      return flag;
-    } catch (error) {
-      console.error("Error checking for setup file: ", error);
-    }
-  };
-
-  const loadRecent = async () => {
-    // Invoke the get_recent_data command
-    invoke("get_recent_data")
-      .then((response) => {
-        let recentQueue = new Queue();
-        response.map(([key, file]) => {
-          recentQueue.setItemAtIndex(
-            {
-              fileName: file.file_name,
-              filePath: file.file_path,
-              fileSize: file.file_size,
-              fileType: file.file_type,
-              creationDate: file.creation_date,
-              fileExtension: file.file_extension,
-              formattedDate: new Date(
-                file.creation_date.secs_since_epoch * 1000
-              ).toLocaleString(), // Optional: Format the date
-            },
-            key
-          );
-        });
-        setRecent(recentQueue);
-
-        // console.log(recentQueue);
-      })
-      .catch((error) => {
-        console.error("Error fetching data:", error);
-      });
   };
 
   const fetchResults = async (query) => {
@@ -143,17 +151,11 @@ function App() {
     try {
       // Returns an array of objects with filename and details
       const searchResults = await invoke("search_files", { query });
+
       // Transform the data structure to better work with React
-      const formattedResults = searchResults.map(([file_name, details]) => ({
+      const formattedResults = searchResults.map(([file_name, file_path]) => ({
         fileName: file_name,
-        filePath: details.file_path,
-        fileSize: details.file_size,
-        fileType: details.file_type,
-        creationDate: details.creation_date,
-        fileExtension: details.file_extension,
-        formattedDate: new Date(
-          details.creation_date.secs_since_epoch * 1000
-        ).toLocaleString(), // Optional: Format the date
+        filePath: file_path,
       }));
 
       setResults(formattedResults);
@@ -182,7 +184,9 @@ function App() {
 
   const openFile = (file) => {
     if (file["filePath"]) {
-      // window.open(filePath, "_blank");
+      invoke("open_file", { path: file.filePath })
+        .then(() => console.log(`File opened: ${file.filePath}`))
+        .catch((error) => console.error("Failed to open file:", error));
     } else {
       console.warn("No file path provided for opening.");
     }
@@ -203,45 +207,91 @@ function App() {
       let recentQueue = recent;
       let items = recentQueue.getItems();
 
-      items = items.map(
-        ({
-          fileName,
-          filePath,
-          fileSize,
-          fileType,
-          creationDate,
-          fileExtension,
-        }) => ({
-          file_name: fileName,
-          file_path: filePath,
-          file_size: fileSize,
-          file_type: fileType,
-          creation_date: creationDate,
-          file_extension: fileExtension,
-        })
-      );
+      let itemsArray = Object.entries(items).map(([key, value]) => [
+        parseInt(key), // Convert key to integer
+        [value.fileName, value.filePath], // Value as a tuple of [fileName, filePath]
+      ]);
 
-      let itemsMap = Object.assign({}, items);
-
-      await invoke("process_recent", { data: itemsMap });
+      await invoke("process_recent", { data: itemsArray });
     } catch (error) {
       console.error("Error: ", error);
       setError("Failed");
     }
   };
 
+  const getFileIcon = (filename) => {
+    const split = filename.split(".");
+    if (split.length < 2) {
+      return "latte/_folder.svg";
+    } else {
+      const extension = split.pop().toLowerCase();
+      switch (extension) {
+        case "pdf":
+          return "latte/pdf.svg";
+        case "jpg":
+        case "jpeg":
+        case "png":
+          return "latte/image.svg";
+        case "csv":
+          return "latte/csv.svg";
+        case "xls":
+        case "xlsx":
+          return "latte/ms-excel.svg";
+        case "doc":
+        case "docx":
+          return "latte/ms-word.svg";
+        case "pptx":
+          return "latte/ms-powerpoint.svg";
+        case "txt":
+          return "latte/text.svg";
+
+        case "js":
+          return "latte/javascript.svg";
+        case "ts":
+          return "latte/typescript.svg";
+        case "css":
+          return "latte/css.svg";
+        case "html":
+          return "latte/html.svg";
+        case "py":
+          return "latte/python.svg";
+        case "rs":
+          return "latte/rust.svg";
+
+        case "exe":
+          return "latte/exe.svg";
+        case "":
+          return "latte/_folder.svg";
+        default:
+          return "latte/_file.svg";
+      }
+    }
+  };
+
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-      {(!setup || !start) && (
-        <SetupPage
-          startup={startup}
-          setupCheck={setupCheck}
-          loadRecent={loadRecent}
-        />
+      {(!setup && !start) && (
+        <SetupPage setSetup={setSetup}/>
+      )}
+      {(setup && !start) && (
+        <div className="flex flex-col items-center justify-center h-screen">
+        <div className="w-16 h-16 border-[5px] border-primary border-b-transparent rounded-full inline-block animate-[rotation_1s_linear_infinite]">
+          <style jsx>{`
+            @keyframes rotation {
+              0% {
+                transform: rotate(0deg);
+              }
+              100% {
+                transform: rotate(360deg);
+              }
+            }
+          `}</style>
+        </div>
+        <p className="mt-4 text-xl">Indexing Files</p>
+      </div>
       )}
       {setup && start && (
         <>
-          <Navbar query={query} handleChange={handleChange} />
           <ViewPage
             setup={setup}
             results={results}
@@ -250,6 +300,11 @@ function App() {
             query={query}
             openFile={openFile}
             recent={recent}
+            getFileIcon={getFileIcon}
+            handleChange={handleChange}
+            selectedFile={selectedFile}
+            setSelectedFile={setSelectedFile}
+            keyFolders={keyFolders}
           ></ViewPage>
         </>
       )}
